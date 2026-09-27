@@ -17,6 +17,21 @@ def read_sysfs(path: Path) -> str | None:
     except (FileNotFoundError, PermissionError):
         return None
 
+def write_sysfs(path: Path, value: str) -> bool:
+    """Write a value to a sysfs file. Return True if it worked, False if not."""
+    try:
+        path.write_text(value)
+        return True
+    except PermissionError:
+        print(f"Permission denied: {path} (try running with sudo)")
+        return False
+    except FileNotFoundError:
+        print(f"Not supported for this laptop: {path}")
+        return False
+    except OSError as e:
+        print(f"The kernel rejected '{value}' for {path}: {e}")
+        return False
+
 def percent(value_path: Path, max_path: Path) -> str:
     """Read a value and its maximum and return it as a whole-number percentage"""
     value = read_sysfs(value_path)
