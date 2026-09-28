@@ -1,4 +1,5 @@
 from status import read_sysfs, write_sysfs, KEYBOARD
+from settings import save_setting
 
 def set_keyboard_brightness(level: int) -> bool:
     """Switch the keyboard brightness level, only if the input is valid"""
@@ -12,7 +13,11 @@ def set_keyboard_brightness(level: int) -> bool:
         print(f"Brightness must be between 0 and {maximum}")
         return False
     
-    return write_sysfs(KEYBOARD / "brightness", str(level))
+    ok = write_sysfs(KEYBOARD / "brightness", str(level))
+    if ok:
+        save_setting("keyboard_brightness", level)
+        print(f"Saved keyboard brightness to: {level}")
+    return ok
 
 if __name__ == "__main__":
     print(set_keyboard_brightness(1))
