@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 PROFILE = Path("/sys/firmware/acpi")
 ARMOURY = Path("/sys/class/firmware-attributes/asus-armoury/attributes")
@@ -31,6 +32,17 @@ def write_sysfs(path: Path, value: str) -> bool:
     except OSError as e:
         print(f"The kernel rejected '{value}' for {path}: {e}")
         return False
+
+def run_command(args: list[str]) -> str | None:
+    """Run a command and return what it pritned, or None if it failed."""
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=5)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        print(f"Command failed: {' '.join(args)}\n {result.stderr.strip()}")
+        return None
+    return result.stdout.strip()
 
 def percent(value_path: Path, max_path: Path) -> str:
     """Read a value and its maximum and return it as a whole-number percentage"""
