@@ -1,13 +1,11 @@
 from settings import load_settings
 from battery import set_charge_limit
 from keyboard import set_keyboard_brightness
-from display import set_refresh_rate
 from nightlight import set_night_light, set_night_light_temperature
 
 APPLIERS = {
     "charge_limit": set_charge_limit,
     "keyboard_brightness": set_keyboard_brightness,
-    "refresh_rate": set_refresh_rate,
     "night_light": set_night_light,
     "night_light_temperature": set_night_light_temperature,
 }
