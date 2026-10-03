@@ -3,13 +3,15 @@ from battery import set_charge_limit
 from keyboard import set_keyboard_brightness
 from nightlight import set_night_light, set_night_light_temperature
 from performance import set_profile
+from display import set_refresh_rate
 
 APPLIERS = {
     "charge_limit": set_charge_limit,
     "keyboard_brightness": set_keyboard_brightness,
     "night_light": set_night_light,
     "night_light_temperature": set_night_light_temperature,
-    "profile": set_profile
+    "profile": set_profile,
+    "refresh_rate": set_refresh_rate,
 }
 
 def apply_all() -> None:
