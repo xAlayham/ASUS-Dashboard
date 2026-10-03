@@ -33,10 +33,10 @@ def write_sysfs(path: Path, value: str) -> bool:
         print(f"The kernel rejected '{value}' for {path}: {e}")
         return False
 
-def run_command(args: list[str]) -> str | None:
-    """Run a command and return what it pritned, or None if it failed."""
+def run_command(args: list[str], timeout: int = 5) -> str | None:
+    """Run a command and return what it printed, or None if it failed."""
     try:
-        result = subprocess.run(args, capture_output=True, text=True, timeout=5)
+        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
     if result.returncode != 0:
