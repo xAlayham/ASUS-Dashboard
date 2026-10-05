@@ -3,7 +3,7 @@ from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 
 PROFILES = "org.freedesktop.UPower.PowerProfiles"
-PROFILES_PATH = "/org/freedesktop/UPOwer/PowerProfiles"
+PROFILES_PATH = "/org/freedesktop/UPower/PowerProfiles"
 PROPERTIES = "org.freedesktop.DBus.Properties"
 
 def on_properties_changed(interface, changed, invalidated):
