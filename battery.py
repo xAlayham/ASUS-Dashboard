@@ -13,6 +13,13 @@ def set_charge_limit(limit: int) -> bool:
         print(f"Charge limit is now: {limit}")
     return ok
 
+def get_charge_limit_value() -> int | None:
+    """Return the charge limit as a number (e.g. 80), or None if unsupported"""
+    value = read_sysfs(BATTERY / "charge_control_end_threshold")
+    if value is None:
+        return None
+    return int(value)
+
 if __name__ == "__main__":
     print(set_charge_limit(70))
     print(f"Charge limit read back: {read_sysfs(BATTERY / 'charge_control_end_threshold')}")

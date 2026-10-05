@@ -19,6 +19,13 @@ def set_keyboard_brightness(level: int) -> bool:
         print(f"Saved keyboard brightness to: {level}")
     return ok
 
+def get_keyboard_brightness() -> int | None:
+    """Return the keyboard backlight level (0-3), or None if unsupported"""
+    value = read_sysfs(KEYBOARD / "brightness")
+    if value is None:
+        return None
+    return int(value)
+
 if __name__ == "__main__":
     print(set_keyboard_brightness(1))
     print(set_keyboard_brightness(5))
