@@ -1,18 +1,25 @@
 import sys
 
-from PySide6.QtCore import Qt
+import dbus
+from dbus.mainloop.glib import DBusGMainLoop
+from PySide6.QtCore import Qt, QSignalBlocker, QTimer
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
 )
 
+from dbus_helpers import PROPERTIES
 from performance import get_profile, get_profile_choices, set_profile
+from performance import BUS_NAME as PROFILES, OBJECT_PATH as PROFILES_PATH
 from gpu import get_gpu_mode, set_gpu_mode, PRIME_NAMES
 from display import get_current_refresh_rate, get_refresh_rates, set_refresh_rate
 from nightlight import get_night_light, set_night_light
-from battery_info import get_battery_percentage, get_battery_state
+from battery_info import get_battery_percentage, get_battery_state, UPOWER, BATTERY_PATH
 from keyboard import get_keyboard_brightness, set_keyboard_brightness
 from battery import get_charge_limit_value, set_charge_limit
+
+
+REFRESH_INTERVAL_MS = 2000
 
 
 def show(value, suffix: str = "") -> str:
@@ -51,6 +58,8 @@ class Dashboard(QWidget):
         self.setLayout(layout)
 
         close_button.clicked.connect(self.close)
+
+        self.start_sync()
 
     def build_performance_group(self) -> QGroupBox:
         """Build the Performance section: profile dropdown, GPU mode dropdown and its Apply button"""
@@ -143,11 +152,7 @@ class Dashboard(QWidget):
 
     def build_battery_group(self) -> QGroupBox:
         """Build the Battery section: level label and charge limit slider with its number"""
-        percentage = get_battery_percentage()
-        state = get_battery_state()
-        battery = show(percentage, "%")
-        if percentage is not None and state is not None:
-            battery += f" ({state})"
+        self.battery_label = QLabel(self.battery_text())
 
         self.charge_slider = QSlider(Qt.Orientation.Horizontal)
         self.charge_slider.setRange(20, 100)
@@ -165,7 +170,7 @@ class Dashboard(QWidget):
         charge_row.addWidget(self.charge_value)
 
         form = QFormLayout()
-        form.addRow("Level:", QLabel(battery))
+        form.addRow("Level:", self.battery_label)
         form.addRow("Charge limit:", charge_row)
 
         group = QGroupBox("Battery")
@@ -174,6 +179,79 @@ class Dashboard(QWidget):
         self.charge_slider.valueChanged.connect(self.on_charge_dragged)
         self.charge_slider.sliderReleased.connect(self.on_charge_released)
         return group
+
+    def battery_text(self) -> str:
+        """Return the battery level and state as one line of text, e.g. '80% (discharging)'"""
+        percentage = get_battery_percentage()
+        state = get_battery_state()
+        text = show(percentage, "%")
+        if percentage is not None and state is not None:
+            text += f" ({state})"
+        return text
+
+    def start_sync(self) -> None:
+        """Start following the system: D-Bus signals for what announces changes, a timer for the rest"""
+        bus = dbus.SystemBus()
+        bus.add_signal_receiver(
+            self.on_profile_properties_changed,
+            signal_name="PropertiesChanged",
+            dbus_interface=PROPERTIES,
+            bus_name=PROFILES,
+            path=PROFILES_PATH,
+        )
+        bus.add_signal_receiver(
+            self.on_battery_properties_changed,
+            signal_name="PropertiesChanged",
+            dbus_interface=PROPERTIES,
+            bus_name=UPOWER,
+            path=BATTERY_PATH,
+        )
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.refresh_from_system)
+        self.timer.start(REFRESH_INTERVAL_MS)
+
+    def on_profile_properties_changed(self, interface, changed, invalidated) -> None:
+        """The system says the profile changed: show it without applying it again"""
+        if "ActiveProfile" not in changed:
+            return
+        blocker = QSignalBlocker(self.profile_box)
+        self.profile_box.setCurrentText(str(changed["ActiveProfile"]))
+        del blocker
+
+    def on_battery_properties_changed(self, interface, changed, invalidated) -> None:
+        """The system says the battery level or state changed: refresh the level text"""
+        if "Percentage" in changed or "State" in changed:
+            self.battery_label.setText(self.battery_text())
+
+    def refresh_from_system(self) -> None:
+        """Runs on the timer: re-read what has no change signal and update the widgets quietly"""
+        brightness = get_keyboard_brightness()
+        if brightness is not None and brightness != self.keyboard_slider.value():
+            blocker = QSignalBlocker(self.keyboard_slider)
+            self.keyboard_slider.setValue(brightness)
+            del blocker
+            self.keyboard_value.setText(str(brightness))
+
+        # Skip the charge slider while the user is dragging it, so it isn't pulled back
+        limit = get_charge_limit_value()
+        if limit is not None and not self.charge_slider.isSliderDown() and limit != self.charge_slider.value():
+            blocker = QSignalBlocker(self.charge_slider)
+            self.charge_slider.setValue(limit)
+            del blocker
+            self.charge_value.setText(f"{limit}%")
+
+        rate = get_current_refresh_rate()
+        if rate is not None and f"{rate} Hz" != self.refresh_box.currentText():
+            blocker = QSignalBlocker(self.refresh_box)
+            self.refresh_box.setCurrentText(f"{rate} Hz")
+            del blocker
+
+        night_light = get_night_light()
+        if night_light is not None and night_light != self.night_light_box.isChecked():
+            blocker = QSignalBlocker(self.night_light_box)
+            self.night_light_box.setChecked(night_light)
+            del blocker
 
     def show_result(self, ok: bool, message: str) -> None:
         """Show the outcome of the last action in the status line"""
@@ -215,6 +293,8 @@ class Dashboard(QWidget):
 
 
 if __name__ == "__main__":
+    # Must run before QApplication and before any D-Bus connection, or signals never arrive
+    DBusGMainLoop(set_as_default=True)
     app = QApplication(sys.argv)
     window = Dashboard()
     window.show()
