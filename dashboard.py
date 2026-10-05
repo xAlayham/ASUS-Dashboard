@@ -2,13 +2,14 @@ import sys
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFormLayout, QHBoxLayout, QLabel,
-    QPushButton, QSlider, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox,
+    QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
 )
 
 from performance import get_profile, get_profile_choices, set_profile
-from gpu import get_gpu_mode
-from display import get_current_refresh_rate
+from gpu import get_gpu_mode, set_gpu_mode, PRIME_NAMES
+from display import get_current_refresh_rate, get_refresh_rates, set_refresh_rate
+from nightlight import get_night_light, set_night_light
 from battery_info import get_battery_percentage, get_battery_state
 from keyboard import get_keyboard_brightness, set_keyboard_brightness
 from battery import get_charge_limit_value, set_charge_limit
@@ -26,17 +27,33 @@ class Dashboard(QWidget):
         super().__init__()
 
         self.setWindowTitle("ASUS Dashboard")
-        self.resize(420, 300)
+        self.resize(720, 380)
 
         title = QLabel("ASUS TUF Dashboard")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        percentage = get_battery_percentage()
-        state = get_battery_state()
-        battery = show(percentage, "%")
-        if percentage is not None and state is not None:
-            battery += f" ({state})"
+        # Created before the sections, because their slots write to it
+        self.status_label = QLabel("Ready")
+        close_button = QPushButton("Close")
 
+        grid = QGridLayout()
+        grid.addWidget(self.build_performance_group(), 0, 0)
+        grid.addWidget(self.build_display_group(), 0, 1)
+        grid.addWidget(self.build_keyboard_group(), 1, 0)
+        grid.addWidget(self.build_battery_group(), 1, 1)
+
+        layout = QVBoxLayout()
+        layout.addWidget(title)
+        layout.addLayout(grid)
+        layout.addStretch()
+        layout.addWidget(self.status_label)
+        layout.addWidget(close_button)
+        self.setLayout(layout)
+
+        close_button.clicked.connect(self.close)
+
+    def build_performance_group(self) -> QGroupBox:
+        """Build the Performance section: profile dropdown, GPU mode dropdown and its Apply button"""
         self.profile_box = QComboBox()
         profile = get_profile()
         choices = get_profile_choices()
@@ -46,6 +63,60 @@ class Dashboard(QWidget):
             self.profile_box.addItems(choices)
             self.profile_box.setCurrentText(profile)
 
+        self.gpu_box = QComboBox()
+        self.gpu_box.addItems(list(PRIME_NAMES))
+        self.gpu_button = QPushButton("Apply (needs reboot)")
+        gpu_mode = get_gpu_mode()
+        if gpu_mode is None:
+            self.gpu_box.setEnabled(False)
+            self.gpu_button.setEnabled(False)
+        else:
+            self.gpu_box.setCurrentText(gpu_mode)
+
+        form = QFormLayout()
+        form.addRow("Profile:", self.profile_box)
+        form.addRow("GPU mode:", self.gpu_box)
+        form.addRow("", self.gpu_button)
+
+        group = QGroupBox("Performance")
+        group.setLayout(form)
+
+        # The GPU dropdown has no connection: it only chooses, the button applies
+        self.profile_box.currentTextChanged.connect(self.on_profile_changed)
+        self.gpu_button.clicked.connect(self.on_gpu_apply_clicked)
+        return group
+
+    def build_display_group(self) -> QGroupBox:
+        """Build the Display section: refresh rate dropdown and night light tick box"""
+        self.refresh_box = QComboBox()
+        rates = get_refresh_rates()
+        current_rate = get_current_refresh_rate()
+        if current_rate is None or not rates:
+            self.refresh_box.setEnabled(False)
+        else:
+            self.refresh_box.addItems([f"{rate} Hz" for rate in rates])
+            self.refresh_box.setCurrentText(f"{current_rate} Hz")
+
+        self.night_light_box = QCheckBox("Night light")
+        night_light = get_night_light()
+        if night_light is None:
+            self.night_light_box.setEnabled(False)
+        else:
+            self.night_light_box.setChecked(night_light)
+
+        form = QFormLayout()
+        form.addRow("Refresh rate:", self.refresh_box)
+        form.addRow("", self.night_light_box)
+
+        group = QGroupBox("Display")
+        group.setLayout(form)
+
+        self.refresh_box.currentTextChanged.connect(self.on_refresh_rate_changed)
+        self.night_light_box.toggled.connect(self.on_night_light_toggled)
+        return group
+
+    def build_keyboard_group(self) -> QGroupBox:
+        """Build the Keyboard section: brightness slider with its number"""
         self.keyboard_slider = QSlider(Qt.Orientation.Horizontal)
         self.keyboard_slider.setRange(0, 3)
         self.keyboard_value = QLabel()
@@ -56,6 +127,27 @@ class Dashboard(QWidget):
         else:
             self.keyboard_slider.setValue(brightness)
             self.keyboard_value.setText(str(brightness))
+
+        keyboard_row = QHBoxLayout()
+        keyboard_row.addWidget(self.keyboard_slider)
+        keyboard_row.addWidget(self.keyboard_value)
+
+        form = QFormLayout()
+        form.addRow("Brightness:", keyboard_row)
+
+        group = QGroupBox("Keyboard")
+        group.setLayout(form)
+
+        self.keyboard_slider.valueChanged.connect(self.on_keyboard_changed)
+        return group
+
+    def build_battery_group(self) -> QGroupBox:
+        """Build the Battery section: level label and charge limit slider with its number"""
+        percentage = get_battery_percentage()
+        state = get_battery_state()
+        battery = show(percentage, "%")
+        if percentage is not None and state is not None:
+            battery += f" ({state})"
 
         self.charge_slider = QSlider(Qt.Orientation.Horizontal)
         self.charge_slider.setRange(20, 100)
@@ -68,38 +160,20 @@ class Dashboard(QWidget):
             self.charge_slider.setValue(limit)
             self.charge_value.setText(f"{limit}%")
 
-        self.status_label = QLabel("")
-        close_button = QPushButton("Close")
-
-        keyboard_row = QHBoxLayout()
-        keyboard_row.addWidget(self.keyboard_slider)
-        keyboard_row.addWidget(self.keyboard_value)
-
         charge_row = QHBoxLayout()
         charge_row.addWidget(self.charge_slider)
         charge_row.addWidget(self.charge_value)
 
         form = QFormLayout()
-        form.addRow("Performance profile:", self.profile_box)
-        form.addRow("GPU mode:", QLabel(show(get_gpu_mode())))
-        form.addRow("Refresh rate:", QLabel(show(get_current_refresh_rate(), " Hz")))
-        form.addRow("Battery:", QLabel(battery))
+        form.addRow("Level:", QLabel(battery))
         form.addRow("Charge limit:", charge_row)
-        form.addRow("Keyboard backlight:", keyboard_row)
 
-        layout = QVBoxLayout()
-        layout.addWidget(title)
-        layout.addLayout(form)
-        layout.addStretch()
-        layout.addWidget(self.status_label)
-        layout.addWidget(close_button)
-        self.setLayout(layout)
+        group = QGroupBox("Battery")
+        group.setLayout(form)
 
-        self.profile_box.currentTextChanged.connect(self.on_profile_changed)
-        self.keyboard_slider.valueChanged.connect(self.on_keyboard_changed)
         self.charge_slider.valueChanged.connect(self.on_charge_dragged)
         self.charge_slider.sliderReleased.connect(self.on_charge_released)
-        close_button.clicked.connect(self.close)
+        return group
 
     def show_result(self, ok: bool, message: str) -> None:
         """Show the outcome of the last action in the status line"""
@@ -108,6 +182,22 @@ class Dashboard(QWidget):
     def on_profile_changed(self, text: str) -> None:
         ok = set_profile(text)
         self.show_result(ok, f"Profile set to {text}" if ok else f"Could not set profile to {text}")
+
+    def on_gpu_apply_clicked(self) -> None:
+        """Runs when Apply is clicked. Blocks the window while the password dialog is open"""
+        mode = self.gpu_box.currentText()
+        ok = set_gpu_mode(mode)
+        self.show_result(ok, f"GPU mode set to {mode}. Reboot to apply" if ok else f"Could not set GPU mode to {mode}")
+
+    def on_refresh_rate_changed(self, text: str) -> None:
+        rate = int(text.split()[0])
+        ok = set_refresh_rate(rate)
+        self.show_result(ok, f"Refresh rate set to {rate} Hz" if ok else f"Could not set refresh rate to {rate} Hz")
+
+    def on_night_light_toggled(self, checked: bool) -> None:
+        ok = set_night_light(checked)
+        state = "on" if checked else "off"
+        self.show_result(ok, f"Night light turned {state}" if ok else f"Could not turn night light {state}")
 
     def on_keyboard_changed(self, value: int) -> None:
         self.keyboard_value.setText(str(value))
