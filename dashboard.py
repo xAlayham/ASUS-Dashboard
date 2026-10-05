@@ -1,11 +1,13 @@
 import sys
+from pathlib import Path
 
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
 from PySide6.QtCore import Qt, QSignalBlocker, QTimer
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QPushButton, QSlider, QStyle, QStyleOption, QVBoxLayout, QWidget,
 )
 
 from dbus_helpers import PROPERTIES
@@ -17,9 +19,33 @@ from nightlight import get_night_light, set_night_light
 from battery_info import get_battery_percentage, get_battery_state, UPOWER, BATTERY_PATH
 from keyboard import get_keyboard_brightness, set_keyboard_brightness
 from battery import get_charge_limit_value, set_charge_limit
+from settings import get_setting, save_setting
+from themes import THEMES, DEFAULT_THEME
 
 
 REFRESH_INTERVAL_MS = 2000
+PROJECT_DIR = Path(__file__).parent
+
+
+def get_theme_name() -> str:
+    """Return the saved theme name, or the default if nothing valid is saved"""
+    name = get_setting("theme", DEFAULT_THEME)
+    if name not in THEMES:
+        return DEFAULT_THEME
+    return name
+
+
+def build_style(theme_name: str) -> str:
+    """Return style.qss with the colours of one theme filled in, or '' (default look) if the file is missing"""
+    try:
+        style = (PROJECT_DIR / "style.qss").read_text()
+    except FileNotFoundError:
+        print("style.qss not found, using the default look")
+        return ""
+    style = style.replace("@ASSETS@", (PROJECT_DIR / "assets").as_posix())
+    for name, colour in THEMES[theme_name].items():
+        style = style.replace(f"@{name}@", colour)
+    return style
 
 
 def show(value, suffix: str = "") -> str:
@@ -34,14 +60,28 @@ class Dashboard(QWidget):
         super().__init__()
 
         self.setWindowTitle("ASUS Dashboard")
-        self.resize(720, 380)
+        self.resize(780, 470)
+        # Object names let style.qss target these widgets; the attribute makes the window background styleable
+        self.setObjectName("window")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        # Lets the desktop show through wherever style.qss uses a see-through background colour
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         title = QLabel("ASUS TUF Dashboard")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setObjectName("title")
 
         # Created before the sections, because their slots write to it
         self.status_label = QLabel("Ready")
+        self.status_label.setObjectName("status")
         close_button = QPushButton("Close")
+
+        theme_label = QLabel("Theme:")
+        theme_label.setObjectName("themeLabel")
+        self.theme_box = QComboBox()
+        self.theme_box.setObjectName("themeBox")
+        self.theme_box.addItems(list(THEMES))
+        self.theme_box.setCurrentText(get_theme_name())
 
         grid = QGridLayout()
         grid.addWidget(self.build_performance_group(), 0, 0)
@@ -50,16 +90,33 @@ class Dashboard(QWidget):
         grid.addWidget(self.build_battery_group(), 1, 1)
 
         layout = QVBoxLayout()
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(10)
         layout.addWidget(title)
         layout.addLayout(grid)
         layout.addStretch()
-        layout.addWidget(self.status_label)
-        layout.addWidget(close_button)
+
+        # Bottom row: status on the left, theme chooser and Close on the right
+        bottom_row = QHBoxLayout()
+        bottom_row.addWidget(self.status_label)
+        bottom_row.addStretch()
+        bottom_row.addWidget(theme_label)
+        bottom_row.addWidget(self.theme_box)
+        bottom_row.addWidget(close_button)
+        layout.addLayout(bottom_row)
         self.setLayout(layout)
 
         close_button.clicked.connect(self.close)
+        self.theme_box.currentTextChanged.connect(self.on_theme_changed)
 
         self.start_sync()
+
+    def paintEvent(self, event) -> None:
+        """Draw the window background from style.qss. Qt skips this by itself for a see-through window"""
+        option = QStyleOption()
+        option.initFrom(self)
+        painter = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, option, painter, self)
 
     def build_performance_group(self) -> QGroupBox:
         """Build the Performance section: profile dropdown, GPU mode dropdown and its Apply button"""
@@ -88,6 +145,7 @@ class Dashboard(QWidget):
         form.addRow("", self.gpu_button)
 
         group = QGroupBox("Performance")
+        group.setObjectName("performance")
         group.setLayout(form)
 
         # The GPU dropdown has no connection: it only chooses, the button applies
@@ -118,6 +176,7 @@ class Dashboard(QWidget):
         form.addRow("", self.night_light_box)
 
         group = QGroupBox("Display")
+        group.setObjectName("display")
         group.setLayout(form)
 
         self.refresh_box.currentTextChanged.connect(self.on_refresh_rate_changed)
@@ -145,6 +204,7 @@ class Dashboard(QWidget):
         form.addRow("Brightness:", keyboard_row)
 
         group = QGroupBox("Keyboard")
+        group.setObjectName("keyboard")
         group.setLayout(form)
 
         self.keyboard_slider.valueChanged.connect(self.on_keyboard_changed)
@@ -174,6 +234,7 @@ class Dashboard(QWidget):
         form.addRow("Charge limit:", charge_row)
 
         group = QGroupBox("Battery")
+        group.setObjectName("battery")
         group.setLayout(form)
 
         self.charge_slider.valueChanged.connect(self.on_charge_dragged)
@@ -257,6 +318,12 @@ class Dashboard(QWidget):
         """Show the outcome of the last action in the status line"""
         self.status_label.setText(f"{'✓' if ok else '✗'} {message}")
 
+    def on_theme_changed(self, name: str) -> None:
+        """Re-colour the whole app with the chosen theme and remember the choice"""
+        QApplication.instance().setStyleSheet(build_style(name))
+        save_setting("theme", name)
+        self.show_result(True, f"Theme changed to {name}")
+
     def on_profile_changed(self, text: str) -> None:
         ok = set_profile(text)
         self.show_result(ok, f"Profile set to {text}" if ok else f"Could not set profile to {text}")
@@ -296,6 +363,7 @@ if __name__ == "__main__":
     # Must run before QApplication and before any D-Bus connection, or signals never arrive
     DBusGMainLoop(set_as_default=True)
     app = QApplication(sys.argv)
+    app.setStyleSheet(build_style(get_theme_name()))
     window = Dashboard()
     window.show()
     sys.exit(app.exec())

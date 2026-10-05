@@ -6,7 +6,7 @@ BATTERY_PATH = "/org/freedesktop/UPower/devices/battery_BAT1"
 DEVICE = "org.freedesktop.UPower.Device"
 
 STATE_NAMES = {
-    1: "chargin",
+    1: "charging",
     2: "discharging",
     3: "empty",
     4: "fully charged",
@@ -26,7 +26,7 @@ def get_battery_state() -> str | None:
     value = get_property(UPOWER, BATTERY_PATH, DEVICE, "State")
     if value is None:
         return None
-    return STATE_NAMES.get(int(value), "unkown")
+    return STATE_NAMES.get(int(value), "unknown")
 
 def get_power_draw() -> float | None:
     """Return how many watts are flowing in or out of the battetry, or None"""

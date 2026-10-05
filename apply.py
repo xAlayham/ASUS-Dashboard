@@ -14,6 +14,9 @@ APPLIERS = {
     "refresh_rate": set_refresh_rate,
 }
 
+# Saved settings that only the dashboard window uses; there is nothing to apply to the hardware
+UI_ONLY = {"theme"}
+
 def apply_all() -> None:
     """Apply every saved setting to the hardware and print a summary"""
     settings = load_settings()
@@ -24,9 +27,11 @@ def apply_all() -> None:
     applied = 0
     failed = 0
     for key, value in settings.items():
+        if key in UI_ONLY:
+            continue
         applier = APPLIERS.get(key)
         if applier is None:
-            print(f"Skipping unkown setting: {key}")
+            print(f"Skipping unknown setting: {key}")
             continue
         ok = applier(value)
         if ok:
