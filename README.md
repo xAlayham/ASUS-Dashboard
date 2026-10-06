@@ -117,3 +117,6 @@ The tests need no ASUS hardware. Every hardware file, command and D-Bus call is 
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
+
+
+This is an independent project. It is not affiliated with or endorsed by ASUS.
