@@ -16,6 +16,7 @@ EFFECTS_WITH_COLOUR = {"Static", "Breathing", "Strobing"}
 EFFECTS_WITH_SPEED = {"Breathing", "Colour cycle"}
 DEFAULT_RGB = {"effect": "Static", "colour": "#ff0000", "speed": "Medium"}
 SAVE_TO_KEYBOARD = 1
+HEX_DIGITS = "0123456789abcdefABCDEF"
 
 def set_keyboard_brightness(level: int) -> bool:
     """Switch the keyboard brightness level, only if the input is valid"""
@@ -46,10 +47,9 @@ def parse_colour(colour: str) -> tuple[int, int, int] | None:
     """Turn a colour like '#ff8800' into (red, green, blue) numbers from 0 to 255, or None if it is not valid"""
     if len(colour) != 7 or not colour.startswith("#"):
         return None
-    try:
-        return int(colour[1:3], 16), int(colour[3:5], 16), int(colour[5:7], 16)
-    except ValueError:
+    if not all(character in HEX_DIGITS for character in colour[1:]):
         return None
+    return int(colour[1:3], 16), int(colour[3:5], 16), int(colour[5:7], 16)
 
 
 def set_keyboard_rgb(effect: str, colour: str, speed: str) -> bool:

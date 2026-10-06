@@ -41,6 +41,26 @@ def build_entry(hidden: bool) -> str:
     return "\n".join(lines) + "\n"
 
 
+def is_autostart_enabled(autostart_dir: Path = AUTOSTART_DIR) -> bool:
+    """Return True if the dashboard is set to start at login"""
+    return (autostart_dir / ENTRY_NAME).exists()
+
+
+def set_autostart(enabled: bool, autostart_dir: Path = AUTOSTART_DIR) -> bool:
+    """Turn starting at login on or off by writing or deleting the autostart entry. Return True if it worked"""
+    path = autostart_dir / ENTRY_NAME
+    try:
+        if enabled:
+            autostart_dir.mkdir(parents=True, exist_ok=True)
+            path.write_text(build_entry(hidden=True))
+        elif path.exists():
+            path.unlink()
+        return True
+    except OSError as e:
+        print(f"Could not change the autostart entry {path}: {e}")
+        return False
+
+
 def install(applications_dir: Path = APPLICATIONS_DIR, autostart_dir: Path = AUTOSTART_DIR) -> list[Path]:
     """Write the launcher and the autostart entry. Return the paths of the files written"""
     written = []

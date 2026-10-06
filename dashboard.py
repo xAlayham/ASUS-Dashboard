@@ -33,6 +33,7 @@ from sensors import get_cpu_temperature, get_fan_speeds, get_power_draw, CpuUsag
 from sparkline import Sparkline
 from presets import PRESETS, apply_preset, describe_preset, find_matching_preset
 from automation import choose_preset, DEFAULT_CHARGER_PRESET, DEFAULT_BATTERY_PRESET
+from install_desktop import is_autostart_enabled, set_autostart
 
 
 REFRESH_INTERVAL_MS = 2000
@@ -324,7 +325,7 @@ class Dashboard(QWidget):
         return row
 
     def build_automation_group(self) -> QGroupBox:
-        """Build the Automation section: a tick box and the profile to use on the charger and on battery"""
+        """Build the Automation section: automatic profile switching, and starting at login"""
         self.auto_box = QCheckBox("Switch automatically")
         self.auto_box.setObjectName("autoCheck")
         enabled = bool(get_setting("auto_switch", False))
@@ -356,12 +357,21 @@ class Dashboard(QWidget):
         row.addWidget(self.battery_box)
         row.addStretch()
 
-        self.auto_box.toggled.connect(self.charger_box.setEnabled)
-        self.auto_box.toggled.connect(self.battery_box.setEnabled)
+        self.autostart_box = QCheckBox("Start at login, hidden in the tray")
+        self.autostart_box.setObjectName("autoCheck")
+        self.autostart_box.setChecked(is_autostart_enabled())
+
+        box = QVBoxLayout()
+        box.addLayout(row)
+        box.addWidget(self.autostart_box)
+
         group = QGroupBox("Automation")
         group.setObjectName("automation")
-        group.setLayout(row)
+        group.setLayout(box)
 
+        self.auto_box.toggled.connect(self.charger_box.setEnabled)
+        self.auto_box.toggled.connect(self.battery_box.setEnabled)
+        self.autostart_box.toggled.connect(self.on_autostart_toggled)
         self.auto_box.toggled.connect(partial(save_setting, "auto_switch"))
         self.charger_box.currentTextChanged.connect(partial(save_setting, "charger_preset"))
         self.battery_box.currentTextChanged.connect(partial(save_setting, "battery_preset"))
@@ -677,6 +687,17 @@ class Dashboard(QWidget):
         blocker = QSignalBlocker(self.profile_box)
         self.profile_box.setCurrentText(str(changed["ActiveProfile"]))
         del blocker
+
+    def on_autostart_toggled(self, checked: bool) -> None:
+        """Runs when Start at login is ticked or unticked. Puts the box back if the change failed"""
+        ok = set_autostart(checked)
+        if ok:
+            self.show_result(True, "Will start at login" if checked else "Will not start at login")
+            return
+        blocker = QSignalBlocker(self.autostart_box)
+        self.autostart_box.setChecked(is_autostart_enabled())
+        del blocker
+        self.show_result(False, "Could not change the start at login setting")
 
     def on_upower_properties_changed(self, interface, changed, invalidated) -> None:
         """The system says something about the power supply changed: pass on whether we are on battery"""
