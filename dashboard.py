@@ -1,3 +1,5 @@
+import os
+import signal
 import sys
 from functools import partial
 from pathlib import Path
@@ -5,10 +7,12 @@ from pathlib import Path
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
 from PySide6.QtCore import Qt, QSignalBlocker, QTimer
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QAction, QColor, QIcon, QPainter
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QColorDialog, QComboBox, QFormLayout, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QPushButton, QSlider, QStyle, QStyleOption, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QMenu, QPushButton, QScrollArea, QSizePolicy, QSlider, QStyle, QStyleOption,
+    QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from dbus_helpers import PROPERTIES
@@ -34,8 +38,43 @@ from automation import choose_preset, DEFAULT_CHARGER_PRESET, DEFAULT_BATTERY_PR
 REFRESH_INTERVAL_MS = 2000
 SENSOR_INTERVAL_MS = 1000
 PROJECT_DIR = Path(__file__).parent
+APP_NAME = "ASUS Dashboard"
+SERVER_NAME = f"asus-dashboard-{os.getuid()}"
+ICON_PATH = PROJECT_DIR / "assets" / "icon.svg"
+WINDOW_WIDTH_SHARE = 0.42
+WINDOW_HEIGHT_SHARE = 0.52
+NO_COPY = "none"
+COPY_SHOWN = "shown"
+COPY_STUCK = "stuck"
 CUSTOM = "Custom"
 CUSTOM_HINT = "your own mix of settings"
+
+
+def ask_running_copy_to_show() -> str:
+    """Ask a dashboard that is already running to show its window, and say what happened.
+
+    Returns NO_COPY if none is running, COPY_SHOWN if one answered, or COPY_STUCK if one exists
+    but did not answer. A copy that is suspended or frozen still accepts the connection, so only
+    its reply proves that it is alive.
+    """
+    socket = QLocalSocket()
+    socket.connectToServer(SERVER_NAME)
+    if not socket.waitForConnected(500):
+        return NO_COPY
+    if socket.waitForReadyRead(1500):
+        return COPY_SHOWN
+    return COPY_STUCK
+
+
+def wrap_in_scroll_area(content: QWidget) -> QScrollArea:
+    """Put a widget in a scroll area, so the window can be smaller than the widget needs"""
+    content.setObjectName("tabContent")
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.Shape.NoFrame)
+    area.viewport().setAutoFillBackground(False)
+    area.setWidget(content)
+    return area
 
 
 def get_theme_name() -> str:
@@ -78,8 +117,10 @@ class Dashboard(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("ASUS Dashboard")
-        self.resize(780, 830)
+        self.setWindowTitle(APP_NAME)
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.resize(int(screen.width() * WINDOW_WIDTH_SHARE), int(screen.height() * WINDOW_HEIGHT_SHARE))
+        self.setMinimumSize(360, 280)
         self.setObjectName("window")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -93,6 +134,7 @@ class Dashboard(QWidget):
 
         self.status_label = QLabel("Ready")
         self.status_label.setObjectName("status")
+        self.status_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         close_button = QPushButton("Close")
 
         theme_label = QLabel("Theme:")
@@ -102,26 +144,20 @@ class Dashboard(QWidget):
         self.theme_box.addItems(list(THEMES))
         self.theme_box.setCurrentText(get_theme_name())
 
-        grid = QGridLayout()
-        grid.addWidget(self.build_performance_group(), 0, 0)
-        grid.addWidget(self.build_display_group(), 0, 1)
-        grid.addWidget(self.build_keyboard_group(), 1, 0)
-        grid.addWidget(self.build_battery_group(), 1, 1)
-        grid.addWidget(self.build_live_group(), 2, 0, 1, 2)
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.tabs.addTab(self.build_controls_tab(), "Controls")
+        self.tabs.addTab(self.build_monitor_tab(), "Monitor")
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(22, 18, 22, 18)
-        layout.setSpacing(10)
+        layout.setContentsMargins(18, 12, 18, 12)
+        layout.setSpacing(8)
         layout.addWidget(title)
-
         layout.addLayout(self.build_preset_row())
-        layout.addLayout(self.build_automation_row())
-        layout.addLayout(grid)
-        layout.addStretch()
+        layout.addWidget(self.tabs, 1)
 
         bottom_row = QHBoxLayout()
-        bottom_row.addWidget(self.status_label)
-        bottom_row.addStretch()
+        bottom_row.addWidget(self.status_label, 1)
         bottom_row.addWidget(theme_label)
         bottom_row.addWidget(self.theme_box)
         bottom_row.addWidget(close_button)
@@ -131,15 +167,128 @@ class Dashboard(QWidget):
         close_button.clicked.connect(self.close)
         self.theme_box.currentTextChanged.connect(self.on_theme_changed)
 
+        self.build_tray()
+        self.start_single_instance_server()
         self.start_sync()
 
-    def closeEvent(self, event) -> None:
-        """Qt calls this when the window is asked to close. Refuse while the GPU job is still running"""
-        if self.gpu_worker is not None and self.gpu_worker.isRunning():
-            self.show_result(False, "Finish or cancel the password window before closing")
-            event.ignore()
+    def build_controls_tab(self) -> QScrollArea:
+        """Build the Controls tab: every setting you can change, in a scrollable grid of sections"""
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 6, 0)
+        grid.addWidget(self.build_automation_group(), 0, 0, 1, 2)
+        grid.addWidget(self.build_performance_group(), 1, 0)
+        grid.addWidget(self.build_display_group(), 1, 1)
+        grid.addWidget(self.build_keyboard_group(), 2, 0)
+        grid.addWidget(self.build_battery_group(), 2, 1)
+        grid.setRowStretch(3, 1)
+
+        content = QWidget()
+        content.setLayout(grid)
+        return wrap_in_scroll_area(content)
+
+    def build_monitor_tab(self) -> QScrollArea:
+        """Build the Monitor tab: the live readings and their graphs"""
+        box = QVBoxLayout()
+        box.setContentsMargins(0, 0, 6, 0)
+        box.addWidget(self.build_live_group())
+
+        content = QWidget()
+        content.setLayout(box)
+        return wrap_in_scroll_area(content)
+
+    def build_tray(self) -> None:
+        """Create the tray icon and its menu: show the window, switch profile, or quit"""
+        show_action = QAction("Show dashboard", self)
+        quit_action = QAction("Quit", self)
+
+        self.tray_menu = QMenu()
+        self.tray_menu.addAction(show_action)
+        profile_menu = self.tray_menu.addMenu("Profile")
+        for name in PRESETS:
+            action = QAction(name, self)
+            action.triggered.connect(partial(self.on_tray_preset_chosen, name))
+            profile_menu.addAction(action)
+        self.tray_menu.addSeparator()
+        self.tray_menu.addAction(quit_action)
+
+        self.tray = QSystemTrayIcon(QIcon(str(ICON_PATH)), self)
+        self.tray.setToolTip(APP_NAME)
+        self.tray.setContextMenu(self.tray_menu)
+        self.tray.show()
+        self.tray_hint_shown = False
+
+        show_action.triggered.connect(self.show_window)
+        quit_action.triggered.connect(self.on_quit_requested)
+
+    def start_single_instance_server(self) -> None:
+        """Listen for other copies being started, and show this window when one is"""
+        QLocalServer.removeServer(SERVER_NAME)
+        self.server = QLocalServer(self)
+        self.server.listen(SERVER_NAME)
+        self.server.newConnection.connect(self.on_other_copy_started)
+
+    def on_other_copy_started(self) -> None:
+        """Runs when another copy is launched: answer it, so it knows this one is alive, and show the window"""
+        connection = self.server.nextPendingConnection()
+        if connection is not None:
+            connection.write(b"shown")
+            connection.flush()
+            connection.disconnected.connect(connection.deleteLater)
+        self.show_window()
+
+    def show_window(self) -> None:
+        """Bring the window back from the tray and put it in front"""
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def gpu_job_running(self) -> bool:
+        """Return True while the GPU mode change is still waiting or working in the background"""
+        return self.gpu_worker is not None and self.gpu_worker.isRunning()
+
+    def notify(self, message: str) -> None:
+        """Show a desktop notification, but only while the window is hidden and its status line can't be seen"""
+        if not self.isVisible():
+            self.tray.showMessage(APP_NAME, message, QIcon(str(ICON_PATH)))
+
+    def on_tray_preset_chosen(self, name: str) -> None:
+        """Runs when a profile is picked from the tray menu"""
+        self.on_preset_chosen(name)
+        self.notify(self.status_label.text())
+
+    def on_quit_requested(self) -> None:
+        """Runs when Quit is picked from the tray menu. Refuse while the GPU job is still running"""
+        if self.gpu_job_running():
+            self.show_window()
+            self.show_result(False, "Finish or cancel the password window before quitting")
             return
-        event.accept()
+        self.tray.hide()
+        QApplication.instance().quit()
+
+    def closeEvent(self, event) -> None:
+        """Closing the window only hides it to the tray. Quit in the tray menu ends the app"""
+        event.ignore()
+        if self.gpu_job_running():
+            self.show_result(False, "Finish or cancel the password window before closing")
+            return
+        self.hide()
+        if not self.tray_hint_shown:
+            self.tray_hint_shown = True
+            self.tray.showMessage(APP_NAME, "Still running in the tray. Use its menu to quit.", QIcon(str(ICON_PATH)))
+
+    def showEvent(self, event) -> None:
+        """Qt calls this when the window becomes visible: catch up, then keep the controls and readings updating"""
+        super().showEvent(event)
+        self.refresh_from_system()
+        self.refresh_sensors()
+        self.timer.start(REFRESH_INTERVAL_MS)
+        self.sensor_timer.start(SENSOR_INTERVAL_MS)
+
+    def hideEvent(self, event) -> None:
+        """Qt calls this when the window is hidden: stop the timers, since nobody can see the results"""
+        super().hideEvent(event)
+        self.timer.stop()
+        self.sensor_timer.stop()
 
     def paintEvent(self, event) -> None:
         """Draw the window background from style.qss. Qt skips this by itself for a see-through window"""
@@ -163,19 +312,19 @@ class Dashboard(QWidget):
 
         self.preset_hint = QLabel()
         self.preset_hint.setObjectName("presetHint")
+        self.preset_hint.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.show_preset(find_matching_preset(self.current_state()))
 
         row = QHBoxLayout()
         row.addWidget(preset_label)
         row.addWidget(self.preset_box)
-        row.addWidget(self.preset_hint)
-        row.addStretch()
+        row.addWidget(self.preset_hint, 1)
 
         self.preset_box.currentTextChanged.connect(self.on_preset_chosen)
         return row
 
-    def build_automation_row(self) -> QHBoxLayout:
-        """Build the automation row: a tick box and the profile to use on the charger and on battery"""
+    def build_automation_group(self) -> QGroupBox:
+        """Build the Automation section: a tick box and the profile to use on the charger and on battery"""
         self.auto_box = QCheckBox("Switch automatically")
         self.auto_box.setObjectName("autoCheck")
         enabled = bool(get_setting("auto_switch", False))
@@ -209,10 +358,14 @@ class Dashboard(QWidget):
 
         self.auto_box.toggled.connect(self.charger_box.setEnabled)
         self.auto_box.toggled.connect(self.battery_box.setEnabled)
+        group = QGroupBox("Automation")
+        group.setObjectName("automation")
+        group.setLayout(row)
+
         self.auto_box.toggled.connect(partial(save_setting, "auto_switch"))
         self.charger_box.currentTextChanged.connect(partial(save_setting, "charger_preset"))
         self.battery_box.currentTextChanged.connect(partial(save_setting, "battery_preset"))
-        return row
+        return group
 
     def current_state(self) -> dict:
         """Return the current value of every setting a preset can change"""
@@ -439,6 +592,8 @@ class Dashboard(QWidget):
         live_grid.addWidget(self.power_value, 3, 1, 1, 2)
         live_grid.addWidget(QLabel("Nvidia GPU:"), 4, 0)
         live_grid.addWidget(self.nvidia_value, 4, 1, 1, 2)
+        live_grid.setRowStretch(0, 1)
+        live_grid.setRowStretch(1, 1)
 
         group = QGroupBox("Live")
         group.setObjectName("live")
@@ -512,12 +667,8 @@ class Dashboard(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh_from_system)
-        self.timer.start(REFRESH_INTERVAL_MS)
-
         self.sensor_timer = QTimer(self)
         self.sensor_timer.timeout.connect(self.refresh_sensors)
-        self.sensor_timer.start(SENSOR_INTERVAL_MS)
-        self.refresh_sensors()
 
     def on_profile_properties_changed(self, interface, changed, invalidated) -> None:
         """The system says the profile changed: show it without applying it again"""
@@ -549,6 +700,7 @@ class Dashboard(QWidget):
             self.show_result(True, f"{source}: switched to {name}")
         else:
             self.show_result(False, f"{source}: {name} profile, {applied} applied, {failed} failed")
+        self.notify(self.status_label.text())
 
     def on_battery_properties_changed(self, interface, changed, invalidated) -> None:
         """The system says the battery level or state changed: refresh the level text"""
@@ -708,8 +860,23 @@ class Dashboard(QWidget):
 
 if __name__ == "__main__":
     DBusGMainLoop(set_as_default=True)
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
     app = QApplication(sys.argv)
+    running_copy = ask_running_copy_to_show()
+    if running_copy == COPY_SHOWN:
+        print("The dashboard is already running: asked it to show its window")
+        sys.exit(0)
+    if running_copy == COPY_STUCK:
+        print("A copy of the dashboard is running but not responding (it may be suspended).")
+        print("End it with:  pkill -9 -f dashboard.py   and then start the dashboard again.")
+        sys.exit(1)
+
+    app.setApplicationName("asus-dashboard")
+    app.setDesktopFileName("asus-dashboard")
+    app.setWindowIcon(QIcon(str(ICON_PATH)))
+    app.setQuitOnLastWindowClosed(False)
     app.setStyleSheet(build_style(get_theme_name()))
     window = Dashboard()
-    window.show()
+    if "--hidden" not in sys.argv:
+        window.show()
     sys.exit(app.exec())

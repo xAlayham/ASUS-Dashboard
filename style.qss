@@ -16,14 +16,90 @@ QLabel {
 }
 
 QLabel#title {
-    font-size: 22px;
+    font-size: 19px;
     font-weight: 600;
-    padding: 4px 0 6px 0;
+    padding: 0 0 2px 0;
 }
 
 QLabel#status, QLabel#themeLabel {
     color: @MUTED@;
     font-size: 13px;
+}
+
+/* ---------- Tabs: plain text labels, the chosen one underlined in the accent colour ---------- */
+QTabWidget::pane {
+    border: none;
+}
+
+QTabBar {
+    background: transparent;
+}
+
+QTabBar::tab {
+    background: transparent;
+    color: @MUTED@;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 6px 16px;
+    margin-right: 4px;
+    border: none;
+    border-bottom: 2px solid transparent;
+}
+
+QTabBar::tab:hover {
+    color: @TEXT@;
+}
+
+QTabBar::tab:selected {
+    color: @TEXT@;
+    border-bottom: 2px solid @ACCENT@;
+}
+
+/* ---------- Scrolling: see-through areas with thin, quiet scroll bars ---------- */
+QScrollArea, QWidget#tabContent {
+    background: transparent;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 2px;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 10px;
+    margin: 2px;
+}
+
+QScrollBar::handle {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+}
+
+QScrollBar::handle:vertical {
+    min-height: 30px;
+}
+
+QScrollBar::handle:horizontal {
+    min-width: 30px;
+}
+
+QScrollBar::handle:hover {
+    background: @ACCENT_DARK@;
+}
+
+QScrollBar::add-line, QScrollBar::sub-line {
+    width: 0;
+    height: 0;
+}
+
+QScrollBar::add-page, QScrollBar::sub-page {
+    background: transparent;
+}
+
+QAbstractScrollArea::corner {
+    background: transparent;
 }
 
 /* ---------- Sections: flat cards with a coloured line along the bottom ---------- */
@@ -32,8 +108,8 @@ QGroupBox {
     border: 1px solid @CARD_BORDER@;
     border-bottom: 2px solid @ACCENT@;
     border-radius: 12px;
-    margin-top: 30px;
-    padding: 14px 14px 12px 14px;
+    margin-top: 28px;
+    padding: 10px 12px 8px 12px;
     color: @TEXT@;
     font-size: 16px;
     font-weight: 600;
