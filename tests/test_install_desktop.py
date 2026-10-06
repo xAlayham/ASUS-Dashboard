@@ -94,3 +94,19 @@ def test_remove_deletes_both_entries(tmp_path):
 
 def test_remove_does_nothing_when_nothing_is_installed(tmp_path):
     assert install_desktop.remove(tmp_path, tmp_path) == []
+
+
+def test_refresh_rewrites_the_launcher_and_leaves_autostart_off(tmp_path):
+    applications = tmp_path / "applications"
+    autostart = tmp_path / "autostart"
+    assert install_desktop.refresh(applications, autostart) == [applications / ENTRY_NAME]
+    assert install_desktop.is_autostart_enabled(autostart) is False
+
+
+def test_refresh_rewrites_autostart_when_it_is_on(tmp_path):
+    applications = tmp_path / "applications"
+    autostart = tmp_path / "autostart"
+    install_desktop.set_autostart(True, autostart)
+    (autostart / ENTRY_NAME).write_text("out of date")
+    assert install_desktop.refresh(applications, autostart) == [applications / ENTRY_NAME, autostart / ENTRY_NAME]
+    assert "--hidden" in (autostart / ENTRY_NAME).read_text()

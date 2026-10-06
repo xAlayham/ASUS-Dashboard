@@ -15,3 +15,6 @@ jobs:
 
       - name: Run the tests
         run: python3 -m pytest -v
+
+      - name: Check the shell scripts for syntax errors
+        run: bash -n install.sh && bash -n uninstall.sh

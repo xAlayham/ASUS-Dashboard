@@ -1,8 +1,18 @@
+from pathlib import Path
+
 from asus_dashboard.dbus_helpers import get_property
+from asus_dashboard.status import BATTERY
 
 UPOWER = "org.freedesktop.UPower"
 UPOWER_PATH = "/org/freedesktop/UPower"
-BATTERY_PATH = "/org/freedesktop/UPower/devices/battery_BAT1"
+
+
+def battery_object_path(battery: Path) -> str:
+    """Return the name UPower gives a battery, built from its folder name (BAT1 becomes battery_BAT1)"""
+    return f"{UPOWER_PATH}/devices/battery_{battery.name}"
+
+
+BATTERY_PATH = battery_object_path(BATTERY)
 DEVICE = "org.freedesktop.UPower.Device"
 
 STATE_NAMES = {

@@ -22,6 +22,8 @@ HARDWARE_PATHS = [
     (status, "KEYBOARD"),
     (status, "BATTERY"),
     (status, "HWMON"),
+    (status, "POWER_SUPPLY"),
+    (status, "PCI_DEVICES"),
     (battery, "BATTERY"),
     (keyboard, "KEYBOARD"),
     (sensors, "BATTERY"),
@@ -145,13 +147,13 @@ class FakeDisplayConfig:
         self.apply_error = None
         self.applied = []
 
-    def add_monitor(self, connector, modes):
+    def add_monitor(self, connector, modes, properties=None):
         """Add a screen. Each mode is (id, width, height, rate, is_current)"""
         converted = []
         for mode_id, width, height, rate, is_current in modes:
             flags = {"is-current": True} if is_current else {}
             converted.append((mode_id, width, height, rate, 1.0, [1.0, 2.0], flags))
-        self.monitors.append(((connector, "CMN", "0x1521", "0x0"), converted, {}))
+        self.monitors.append(((connector, "CMN", "0x1521", "0x0"), converted, properties or {}))
 
     def GetCurrentState(self):
         if self.read_error is not None:

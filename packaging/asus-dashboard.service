@@ -1,0 +1,10 @@
+[Unit]
+Description=Re-apply ASUS Dashboard settings
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart="@VENV@/bin/asus-dashboard-apply"
+
+[Install]
+WantedBy=graphical-session.target

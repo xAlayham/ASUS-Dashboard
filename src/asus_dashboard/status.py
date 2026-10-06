@@ -3,13 +3,48 @@ import subprocess
 
 PROFILE = Path("/sys/firmware/acpi")
 ARMOURY = Path("/sys/class/firmware-attributes/asus-armoury/attributes")
-NVIDIA_GPU = Path("/sys/bus/pci/devices/0000:01:00.0/power/runtime_status")
 SCREEN = Path("/sys/class/backlight/intel_backlight")
 KEYBOARD = Path("/sys/class/leds/asus::kbd_backlight")
-BATTERY = Path("/sys/class/power_supply/BAT1")
 HWMON = Path("/sys/class/hwmon")
+POWER_SUPPLY = Path("/sys/class/power_supply")
+PCI_DEVICES = Path("/sys/bus/pci/devices")
 
+NVIDIA_VENDOR = "0x10de"
+DISPLAY_CLASS_PREFIX = "0x03"
 NOT_SUPPORTED = "not supported"
+
+
+def find_battery(power_supply: Path = POWER_SUPPLY) -> Path:
+    """Return the laptop battery's folder, whatever its number (BAT0, BAT1, ...).
+
+    If there is no battery, a path that does not exist is returned, so everything that reads
+    from it reports 'not supported' instead of failing.
+    """
+    batteries = sorted(power_supply.glob("BAT*"))
+    if batteries:
+        return batteries[0]
+    return power_supply / "BAT0"
+
+
+def find_nvidia_gpu(pci_devices: Path = PCI_DEVICES) -> Path:
+    """Return the power-state file of the Nvidia graphics card, wherever it is plugged in.
+
+    A device counts if Nvidia made it and it is a display device, which leaves out the card's
+    own sound device. If there is none, a path that does not exist is returned.
+    """
+    for device in sorted(pci_devices.glob("*")):
+        try:
+            vendor = (device / "vendor").read_text().strip()
+            device_class = (device / "class").read_text().strip()
+        except OSError:
+            continue
+        if vendor == NVIDIA_VENDOR and device_class.startswith(DISPLAY_CLASS_PREFIX):
+            return device / "power" / "runtime_status"
+    return pci_devices / "no-nvidia-gpu" / "power" / "runtime_status"
+
+
+BATTERY = find_battery()
+NVIDIA_GPU = find_nvidia_gpu()
 
 def read_sysfs(path: Path) -> str | None:
     """Return the text inside a sysfile, returns None if it can't be read"""

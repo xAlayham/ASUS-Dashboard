@@ -4,7 +4,7 @@ import dbus
 
 MUTTER = "org.gnome.Mutter.DisplayConfig"
 MUTTER_PATH = "/org/gnome/Mutter/DisplayConfig"
-CONNECTOR = "eDP-1"
+BUILTIN_PREFIX = "eDP"
 TEMPORARY = 1
 
 POWER = "org.gnome.SettingsDaemon.Power"
@@ -34,6 +34,18 @@ def get_display_state() -> tuple[int, list, list] | None:
         return None
     return int(serial), monitors, logical_monitors
 
+def is_builtin(monitor) -> bool:
+    """Return True if a monitor from GNOME's list is the laptop's own screen.
+
+    GNOME marks it with 'is-builtin'. If that mark is missing, the connector name is used:
+    laptop screens are connected over eDP.
+    """
+    info, modes, properties = monitor
+    if "is-builtin" in properties:
+        return bool(properties["is-builtin"])
+    return str(info[0]).startswith(BUILTIN_PREFIX)
+
+
 def get_modes() -> list[dict]:
     """Return every mode the built-in screen supports, as simple dicts"""
     state = get_display_state()
@@ -43,7 +55,7 @@ def get_modes() -> list[dict]:
 
     for monitor in monitors:
         info, modes, monitor_properties = monitor
-        if str(info[0]) != CONNECTOR:
+        if not is_builtin(monitor):
             continue
 
         result = []

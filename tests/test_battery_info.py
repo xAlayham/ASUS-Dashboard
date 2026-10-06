@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import dbus
 import pytest
 
@@ -44,3 +46,13 @@ def test_battery_readings_are_none_without_the_service(fake_properties):
     assert battery_info.get_battery_state() is None
     assert battery_info.get_power_draw() is None
     assert battery_info.is_on_battery() is None
+
+
+@pytest.mark.parametrize("name", ["BAT0", "BAT1"])
+def test_battery_object_path_follows_the_battery_name(name):
+    path = battery_info.battery_object_path(Path("/sys/class/power_supply") / name)
+    assert path == f"/org/freedesktop/UPower/devices/battery_{name}"
+
+
+def test_the_battery_path_starts_with_upowers_own_path():
+    assert battery_info.BATTERY_PATH.startswith(battery_info.UPOWER_PATH + "/devices/battery_")

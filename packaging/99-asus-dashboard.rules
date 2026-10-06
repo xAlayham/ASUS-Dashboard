@@ -1,0 +1,11 @@
+# Lets members of the asus-dashboard group change the keyboard light, the keyboard
+# lighting effect and the battery charge limit without a password.
+# Installed to /etc/udev/rules.d/ by install.sh.
+
+# Keyboard light: runs when the LED device appears, by which time its files exist.
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="asus::kbd_backlight", RUN+="/usr/bin/chgrp asus-dashboard /sys%p/brightness /sys%p/kbd_rgb_mode /sys%p/kbd_rgb_state", RUN+="/usr/bin/chmod g+w /sys%p/brightness /sys%p/kbd_rgb_mode /sys%p/kbd_rgb_state"
+
+# Battery charge limit: the ASUS driver adds this file to the battery after the battery
+# itself appears, so the rule waits for the driver to finish loading ("bind").
+# BAT* covers laptops whose battery is BAT0 as well as BAT1.
+ACTION=="bind", SUBSYSTEM=="platform", DRIVER=="asus-nb-wmi", RUN+="/bin/sh -c 'chgrp asus-dashboard /sys/class/power_supply/BAT*/charge_control_end_threshold; chmod g+w /sys/class/power_supply/BAT*/charge_control_end_threshold'"

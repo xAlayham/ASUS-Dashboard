@@ -133,3 +133,23 @@ def test_set_screen_brightness_refuses_out_of_range(fake_properties, percent):
 def test_set_screen_brightness_is_false_if_the_service_refuses(fake_properties):
     fake_properties.set_result = False
     assert display.set_screen_brightness(50) is False
+
+
+def test_the_laptop_screen_is_found_by_gnomes_builtin_mark(fake_display):
+    fake_display.monitors.clear()
+    fake_display.add_monitor("DP-3", [("2560x1440@60.000", 2560, 1440, 60.0, True)], {"is-builtin": False})
+    fake_display.add_monitor("LVDS-1", [("1920x1080@120.000", 1920, 1080, 120.0, True)], {"is-builtin": True})
+    assert display.get_current_mode()["id"] == "1920x1080@120.000"
+
+
+def test_a_screen_marked_as_not_builtin_is_never_used_even_if_named_edp(fake_display):
+    fake_display.monitors.clear()
+    fake_display.add_monitor("eDP-9", [("1920x1080@60.000", 1920, 1080, 60.0, True)], {"is-builtin": False})
+    assert display.get_modes() == []
+
+
+@pytest.mark.parametrize("connector", ["eDP-1", "eDP-2"])
+def test_without_the_mark_a_laptop_screen_is_found_by_its_connector(fake_display, connector):
+    fake_display.monitors.clear()
+    fake_display.add_monitor(connector, [("1920x1080@60.000", 1920, 1080, 60.0, True)])
+    assert display.get_current_refresh_rate() == 60

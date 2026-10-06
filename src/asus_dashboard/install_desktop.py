@@ -1,7 +1,8 @@
 """Add the dashboard to the app menu and make it start, hidden in the tray, at every login.
 
-Run:  asus-dashboard-install            to install both entries
-      asus-dashboard-install --remove   to remove them again
+Run:  asus-dashboard-install             to install both entries
+      asus-dashboard-install --refresh   to rewrite the launcher, and the autostart entry only if it is on
+      asus-dashboard-install --remove    to remove them again
 """
 import sys
 from pathlib import Path
@@ -82,6 +83,18 @@ def install(applications_dir: Path = APPLICATIONS_DIR, autostart_dir: Path = AUT
     return written
 
 
+def refresh(applications_dir: Path = APPLICATIONS_DIR, autostart_dir: Path = AUTOSTART_DIR) -> list[Path]:
+    """Rewrite the launcher, and the autostart entry only if it is already on.
+
+    Used when updating: paths may have changed, but whether to start at login is the user's
+    choice and must not be switched back on behind their back.
+    """
+    written = [write_launcher(applications_dir)]
+    if is_autostart_enabled(autostart_dir) and set_autostart(True, autostart_dir):
+        written.append(autostart_dir / ENTRY_NAME)
+    return written
+
+
 def remove(applications_dir: Path = APPLICATIONS_DIR, autostart_dir: Path = AUTOSTART_DIR) -> list[Path]:
     """Delete the launcher and the autostart entry if they exist. Return the paths of the files removed"""
     removed = []
@@ -99,6 +112,9 @@ def main() -> None:
         for removed_path in remove():
             print(f"Removed {removed_path}")
         print("The dashboard is no longer in the app menu and will not start at login.")
+    elif "--refresh" in sys.argv:
+        for written_path in refresh():
+            print(f"Wrote {written_path}")
     else:
         for written_path in install():
             print(f"Wrote {written_path}")
