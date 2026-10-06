@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 from dbus_helpers import PROPERTIES
 from performance import get_profile, get_profile_choices, set_profile
 from performance import BUS_NAME as PROFILES, OBJECT_PATH as PROFILES_PATH
-from gpu import get_gpu_mode, set_gpu_mode, PRIME_NAMES
+from gpu import get_gpu_mode, set_gpu_mode, is_nvidia_awake, PRIME_NAMES
 from display import get_current_refresh_rate, get_refresh_rates, set_refresh_rate
 from nightlight import get_night_light, set_night_light
 from battery_info import get_battery_percentage, get_battery_state, UPOWER, BATTERY_PATH
@@ -22,9 +22,12 @@ from battery import get_charge_limit_value, set_charge_limit
 from settings import get_setting, save_setting
 from themes import THEMES, DEFAULT_THEME
 from worker import Worker
+from sensors import get_cpu_temperature, get_fan_speeds, get_power_draw, CpuUsage
+from sparkline import Sparkline
 
 
 REFRESH_INTERVAL_MS = 2000
+SENSOR_INTERVAL_MS = 1000
 PROJECT_DIR = Path(__file__).parent
 
 
@@ -61,7 +64,7 @@ class Dashboard(QWidget):
         super().__init__()
 
         self.setWindowTitle("ASUS Dashboard")
-        self.resize(780, 470)
+        self.resize(780, 660)
         self.setObjectName("window")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -88,6 +91,7 @@ class Dashboard(QWidget):
         grid.addWidget(self.build_display_group(), 0, 1)
         grid.addWidget(self.build_keyboard_group(), 1, 0)
         grid.addWidget(self.build_battery_group(), 1, 1)
+        grid.addWidget(self.build_live_group(), 2, 0, 1, 2)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(22, 18, 22, 18)
@@ -247,6 +251,72 @@ class Dashboard(QWidget):
         self.charge_slider.sliderReleased.connect(self.on_charge_released)
         return group
 
+    def build_live_group(self) -> QGroupBox:
+        """Build the Live section: sensor readings that update every second, two of them with graphs"""
+        theme = THEMES[get_theme_name()]
+        self.cpu_usage = CpuUsage()
+
+        self.temp_value = QLabel("...")
+        self.temp_graph = Sparkline(30, 100, theme["SECTION_1"])
+        self.usage_value = QLabel("...")
+        self.usage_graph = Sparkline(0, 100, theme["SECTION_4"])
+        self.fans_value = QLabel("...")
+        self.power_value = QLabel("...")
+        self.nvidia_value = QLabel("...")
+
+        live_grid = QGridLayout()
+        live_grid.setColumnMinimumWidth(1, 70)
+        live_grid.setColumnStretch(2, 1)
+        live_grid.setHorizontalSpacing(14)
+        live_grid.addWidget(QLabel("CPU temperature:"), 0, 0)
+        live_grid.addWidget(self.temp_value, 0, 1)
+        live_grid.addWidget(self.temp_graph, 0, 2)
+        live_grid.addWidget(QLabel("CPU usage:"), 1, 0)
+        live_grid.addWidget(self.usage_value, 1, 1)
+        live_grid.addWidget(self.usage_graph, 1, 2)
+        live_grid.addWidget(QLabel("Fans:"), 2, 0)
+        live_grid.addWidget(self.fans_value, 2, 1, 1, 2)
+        live_grid.addWidget(QLabel("Power draw:"), 3, 0)
+        live_grid.addWidget(self.power_value, 3, 1, 1, 2)
+        live_grid.addWidget(QLabel("Nvidia GPU:"), 4, 0)
+        live_grid.addWidget(self.nvidia_value, 4, 1, 1, 2)
+
+        group = QGroupBox("Live")
+        group.setObjectName("live")
+        group.setLayout(live_grid)
+        return group
+
+    def refresh_sensors(self) -> None:
+        """Runs every second: read the sensors, update the numbers and feed the graphs"""
+        temperature = get_cpu_temperature()
+        if temperature is None:
+            self.temp_value.setText("not supported")
+        else:
+            self.temp_value.setText(f"{temperature:.0f} °C")
+            self.temp_graph.add_value(temperature)
+
+        usage = self.cpu_usage.read()
+        if usage is None:
+            self.usage_value.setText("not supported")
+        else:
+            self.usage_value.setText(f"{usage:.0f} %")
+            self.usage_graph.add_value(usage)
+
+        fans = get_fan_speeds()
+        if fans is None:
+            self.fans_value.setText("not supported")
+        else:
+            self.fans_value.setText(f"CPU {fans[0]} RPM  ·  GPU {fans[1]} RPM")
+
+        power = get_power_draw()
+        self.power_value.setText("on AC power" if power is None else f"{power:.1f} W")
+
+        awake = is_nvidia_awake()
+        if awake is None:
+            self.nvidia_value.setText("off")
+        else:
+            self.nvidia_value.setText("awake" if awake else "asleep")
+
     def battery_text(self) -> str:
         """Return the battery level and state as one line of text, e.g. '80% (discharging)'"""
         percentage = get_battery_percentage()
@@ -277,6 +347,11 @@ class Dashboard(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh_from_system)
         self.timer.start(REFRESH_INTERVAL_MS)
+
+        self.sensor_timer = QTimer(self)
+        self.sensor_timer.timeout.connect(self.refresh_sensors)
+        self.sensor_timer.start(SENSOR_INTERVAL_MS)
+        self.refresh_sensors()
 
     def on_profile_properties_changed(self, interface, changed, invalidated) -> None:
         """The system says the profile changed: show it without applying it again"""
@@ -326,6 +401,8 @@ class Dashboard(QWidget):
     def on_theme_changed(self, name: str) -> None:
         """Re-colour the whole app with the chosen theme and remember the choice"""
         QApplication.instance().setStyleSheet(build_style(name))
+        self.temp_graph.set_colour(THEMES[name]["SECTION_1"])
+        self.usage_graph.set_colour(THEMES[name]["SECTION_4"])
         save_setting("theme", name)
         self.show_result(True, f"Theme changed to {name}")
 
