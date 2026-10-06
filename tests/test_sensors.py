@@ -1,6 +1,6 @@
 import pytest
 
-import sensors
+from asus_dashboard import sensors
 
 
 @pytest.fixture

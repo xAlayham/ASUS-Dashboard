@@ -15,33 +15,33 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from dbus_helpers import PROPERTIES
-from performance import get_profile, get_profile_choices, set_profile
-from performance import BUS_NAME as PROFILES, OBJECT_PATH as PROFILES_PATH
-from gpu import get_gpu_mode, set_gpu_mode, is_nvidia_awake, PRIME_NAMES
-from display import get_current_refresh_rate, get_refresh_rates, set_refresh_rate
-from display import get_screen_brightness, set_screen_brightness, MIN_SCREEN_BRIGHTNESS
-from nightlight import get_night_light, set_night_light
-from battery_info import get_battery_percentage, get_battery_state, is_on_battery, UPOWER, UPOWER_PATH, BATTERY_PATH
-from keyboard import get_keyboard_brightness, set_keyboard_brightness
-from keyboard import get_keyboard_rgb, set_keyboard_rgb, RGB_EFFECTS, RGB_SPEEDS, EFFECTS_WITH_COLOUR, EFFECTS_WITH_SPEED
-from battery import get_charge_limit_value, set_charge_limit
-from settings import get_setting, save_setting
-from themes import THEMES, DEFAULT_THEME
-from worker import Worker
-from sensors import get_cpu_temperature, get_fan_speeds, get_power_draw, CpuUsage
-from sparkline import Sparkline
-from presets import PRESETS, apply_preset, describe_preset, find_matching_preset
-from automation import choose_preset, DEFAULT_CHARGER_PRESET, DEFAULT_BATTERY_PRESET
-from install_desktop import is_autostart_enabled, set_autostart
+from asus_dashboard.dbus_helpers import PROPERTIES
+from asus_dashboard.performance import get_profile, get_profile_choices, set_profile
+from asus_dashboard.performance import BUS_NAME as PROFILES, OBJECT_PATH as PROFILES_PATH
+from asus_dashboard.gpu import get_gpu_mode, set_gpu_mode, is_nvidia_awake, PRIME_NAMES
+from asus_dashboard.display import get_current_refresh_rate, get_refresh_rates, set_refresh_rate
+from asus_dashboard.display import get_screen_brightness, set_screen_brightness, MIN_SCREEN_BRIGHTNESS
+from asus_dashboard.nightlight import get_night_light, set_night_light
+from asus_dashboard.battery_info import get_battery_percentage, get_battery_state, is_on_battery, UPOWER, UPOWER_PATH, BATTERY_PATH
+from asus_dashboard.keyboard import get_keyboard_brightness, set_keyboard_brightness
+from asus_dashboard.keyboard import get_keyboard_rgb, set_keyboard_rgb, RGB_EFFECTS, RGB_SPEEDS, EFFECTS_WITH_COLOUR, EFFECTS_WITH_SPEED
+from asus_dashboard.battery import get_charge_limit_value, set_charge_limit
+from asus_dashboard.settings import get_setting, save_setting
+from asus_dashboard.themes import THEMES, DEFAULT_THEME
+from asus_dashboard.worker import Worker
+from asus_dashboard.sensors import get_cpu_temperature, get_fan_speeds, get_power_draw, CpuUsage
+from asus_dashboard.sparkline import Sparkline
+from asus_dashboard.presets import PRESETS, apply_preset, describe_preset, find_matching_preset
+from asus_dashboard.automation import choose_preset, DEFAULT_CHARGER_PRESET, DEFAULT_BATTERY_PRESET
+from asus_dashboard.install_desktop import is_autostart_enabled, set_autostart
 
 
 REFRESH_INTERVAL_MS = 2000
 SENSOR_INTERVAL_MS = 1000
-PROJECT_DIR = Path(__file__).parent
+PACKAGE_DIR = Path(__file__).parent
 APP_NAME = "ASUS Dashboard"
 SERVER_NAME = f"asus-dashboard-{os.getuid()}"
-ICON_PATH = PROJECT_DIR / "assets" / "icon.svg"
+ICON_PATH = PACKAGE_DIR / "assets" / "icon.svg"
 WINDOW_WIDTH_SHARE = 0.42
 WINDOW_HEIGHT_SHARE = 0.52
 NO_COPY = "none"
@@ -97,11 +97,11 @@ def get_saved_preset(key: str, default: str) -> str:
 def build_style(theme_name: str) -> str:
     """Return style.qss with the colours of one theme filled in, or '' (default look) if the file is missing"""
     try:
-        style = (PROJECT_DIR / "style.qss").read_text()
+        style = (PACKAGE_DIR / "style.qss").read_text()
     except FileNotFoundError:
         print("style.qss not found, using the default look")
         return ""
-    style = style.replace("@ASSETS@", (PROJECT_DIR / "assets").as_posix())
+    style = style.replace("@ASSETS@", (PACKAGE_DIR / "assets").as_posix())
     for name, colour in THEMES[theme_name].items():
         style = style.replace(f"@{name}@", colour)
     return style
@@ -879,7 +879,8 @@ class Dashboard(QWidget):
         self.show_result(ok, f"Charge limit set to {value}%" if ok else "Could not set charge limit")
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Start the dashboard. This is what the asus-dashboard command runs"""
     DBusGMainLoop(set_as_default=True)
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     app = QApplication(sys.argv)
@@ -889,7 +890,7 @@ if __name__ == "__main__":
         sys.exit(0)
     if running_copy == COPY_STUCK:
         print("A copy of the dashboard is running but not responding (it may be suspended).")
-        print("End it with:  pkill -9 -f dashboard.py   and then start the dashboard again.")
+        print("End it with:  pkill -9 -f asus-dashboard   and then start the dashboard again.")
         sys.exit(1)
 
     app.setApplicationName("asus-dashboard")
@@ -901,3 +902,7 @@ if __name__ == "__main__":
     if "--hidden" not in sys.argv:
         window.show()
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

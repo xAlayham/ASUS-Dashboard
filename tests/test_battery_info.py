@@ -1,7 +1,7 @@
 import dbus
 import pytest
 
-import battery_info
+from asus_dashboard import battery_info
 
 
 @pytest.mark.parametrize("value, expected", [

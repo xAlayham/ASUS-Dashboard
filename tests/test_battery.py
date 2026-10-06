@@ -1,7 +1,7 @@
 import pytest
 
-import battery
-import settings
+from asus_dashboard import battery
+from asus_dashboard import settings
 
 
 def read_limit(folder):

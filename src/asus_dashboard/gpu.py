@@ -1,5 +1,5 @@
-from status import run_command, read_sysfs, NVIDIA_GPU
-from dbus_helpers import get_property
+from asus_dashboard.status import run_command, read_sysfs, NVIDIA_GPU
+from asus_dashboard.dbus_helpers import get_property
 
 SWITCHEROO = "net.hadess.SwitcherooControl"
 SWITCHEROO_PATH = "/net/hadess/SwitcherooControl"

@@ -1,5 +1,5 @@
-from dbus_helpers import get_property, set_property
-from settings import save_setting
+from asus_dashboard.dbus_helpers import get_property, set_property
+from asus_dashboard.settings import save_setting
 
 BUS_NAME = "org.freedesktop.UPower.PowerProfiles"
 OBJECT_PATH = "/org/freedesktop/UPower/PowerProfiles"
@@ -34,7 +34,7 @@ def set_profile(profile: str) -> bool:
 
 if __name__ == "__main__":
     from pathlib import Path
-    from status import read_sysfs
+    from asus_dashboard.status import read_sysfs
 
     print("Choices:", get_profile_choices())
     print("Current:", get_profile())

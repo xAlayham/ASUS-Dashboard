@@ -3,16 +3,16 @@ import subprocess
 import dbus
 import pytest
 
-import battery
-import battery_info
-import display
-import gpu
-import keyboard
-import nightlight
-import performance
-import sensors
-import settings
-import status
+from asus_dashboard import battery
+from asus_dashboard import battery_info
+from asus_dashboard import display
+from asus_dashboard import gpu
+from asus_dashboard import keyboard
+from asus_dashboard import nightlight
+from asus_dashboard import performance
+from asus_dashboard import sensors
+from asus_dashboard import settings
+from asus_dashboard import status
 
 HARDWARE_PATHS = [
     (status, "PROFILE"),

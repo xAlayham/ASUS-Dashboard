@@ -1,21 +1,21 @@
 import sys
 
-import install_desktop
-from install_desktop import ENTRY_NAME
+from asus_dashboard import install_desktop
+from asus_dashboard.install_desktop import ENTRY_NAME
 
 
 def test_build_entry_for_the_launcher_starts_the_dashboard():
     text = install_desktop.build_entry(hidden=False)
     assert text.startswith("[Desktop Entry]\n")
     assert text.endswith("\n")
-    assert "dashboard.py" in text
+    assert "asus-dashboard" in text or "asus_dashboard" in text
     assert "--hidden" not in text
     assert "X-GNOME-Autostart-enabled" not in text
 
 
 def test_build_entry_for_autostart_starts_hidden():
     text = install_desktop.build_entry(hidden=True)
-    assert 'dashboard.py" --hidden\n' in text
+    assert " --hidden\n" in text
     assert "X-GNOME-Autostart-enabled=true" in text
 
 
@@ -27,17 +27,21 @@ def test_build_entry_uses_full_paths():
             assert line.startswith("Icon=/")
 
 
-def test_find_python_prefers_the_project_venv(tmp_path, monkeypatch):
-    venv_python = tmp_path / ".venv" / "bin" / "python"
-    venv_python.parent.mkdir(parents=True)
-    venv_python.write_text("")
-    monkeypatch.setattr(install_desktop, "PROJECT_DIR", tmp_path)
-    assert install_desktop.find_python() == venv_python
+def test_find_command_uses_the_command_next_to_the_running_python(tmp_path, monkeypatch):
+    (tmp_path / "asus-dashboard").write_text("")
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python"))
+    assert install_desktop.find_command() == f'"{tmp_path / "asus-dashboard"}"'
 
 
-def test_find_python_falls_back_to_the_running_python(tmp_path, monkeypatch):
-    monkeypatch.setattr(install_desktop, "PROJECT_DIR", tmp_path)
-    assert str(install_desktop.find_python()) == sys.executable
+def test_find_command_falls_back_to_running_the_package(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python"))
+    assert install_desktop.find_command() == f'"{tmp_path / "python"}" -m asus_dashboard'
+
+
+def test_write_launcher_writes_only_the_app_menu_entry(tmp_path):
+    path = install_desktop.write_launcher(tmp_path / "applications")
+    assert path == tmp_path / "applications" / ENTRY_NAME
+    assert "--hidden" not in path.read_text()
 
 
 def test_autostart_is_off_in_an_empty_folder(tmp_path):

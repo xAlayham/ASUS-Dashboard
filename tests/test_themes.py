@@ -3,9 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from themes import DEFAULT_THEME, THEMES
+import asus_dashboard
+from asus_dashboard.themes import DEFAULT_THEME, THEMES
 
-STYLE_FILE = Path(__file__).parent.parent / "style.qss"
+STYLE_FILE = Path(asus_dashboard.__file__).parent / "style.qss"
 PLACEHOLDERS = set(re.findall(r"@([A-Z0-9_]+)@", STYLE_FILE.read_text())) - {"ASSETS"}
 
 

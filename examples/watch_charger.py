@@ -2,7 +2,7 @@ import dbus
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
  
-from performance import set_profile
+from asus_dashboard.performance import set_profile
 
 UPOWER = "org.freedesktop.UPower"
 UPOWER_PATH = "/org/freedesktop/UPower"

@@ -1,5 +1,5 @@
-from settings import save_setting
-from dbus_helpers import get_property, set_property
+from asus_dashboard.settings import save_setting
+from asus_dashboard.dbus_helpers import get_property, set_property
 import dbus
 
 MUTTER = "org.gnome.Mutter.DisplayConfig"

@@ -1,8 +1,8 @@
 import dbus
 import pytest
 
-import performance
-import settings
+from asus_dashboard import performance
+from asus_dashboard import settings
 
 PROFILES = [
     {"Profile": "power-saver", "Driver": "multiple"},

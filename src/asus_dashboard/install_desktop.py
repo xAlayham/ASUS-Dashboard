@@ -1,28 +1,33 @@
 """Add the dashboard to the app menu and make it start, hidden in the tray, at every login.
 
-Run:  python3 install_desktop.py            to install both entries
-      python3 install_desktop.py --remove   to remove them again
+Run:  asus-dashboard-install            to install both entries
+      asus-dashboard-install --remove   to remove them again
 """
 import sys
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).parent.resolve()
+PACKAGE_DIR = Path(__file__).parent.resolve()
+COMMAND_NAME = "asus-dashboard"
 ENTRY_NAME = "asus-dashboard.desktop"
 APPLICATIONS_DIR = Path.home() / ".local" / "share" / "applications"
 AUTOSTART_DIR = Path.home() / ".config" / "autostart"
 
 
-def find_python() -> Path:
-    """Return the Python that has PySide6: the project's .venv if it exists, otherwise the one running this script"""
-    venv_python = PROJECT_DIR / ".venv" / "bin" / "python"
-    if venv_python.exists():
-        return venv_python
-    return Path(sys.executable)
+def find_command() -> str:
+    """Return the command that starts the dashboard, with full paths.
+
+    The asus-dashboard command is installed next to the Python that is running this code, so it
+    is looked for there. If it is missing, the package is started through that Python instead.
+    """
+    command = Path(sys.executable).parent / COMMAND_NAME
+    if command.exists():
+        return f'"{command}"'
+    return f'"{sys.executable}" -m asus_dashboard'
 
 
 def build_entry(hidden: bool) -> str:
     """Return the text of a .desktop file that starts the dashboard, optionally hidden in the tray"""
-    command = f'"{find_python()}" "{PROJECT_DIR / "dashboard.py"}"'
+    command = find_command()
     if hidden:
         command += " --hidden"
     lines = [
@@ -31,7 +36,7 @@ def build_entry(hidden: bool) -> str:
         "Name=ASUS Dashboard",
         "Comment=Control panel for ASUS laptops",
         f"Exec={command}",
-        f"Icon={PROJECT_DIR / 'assets' / 'icon.svg'}",
+        f"Icon={PACKAGE_DIR / 'assets' / 'icon.svg'}",
         "Terminal=false",
         "Categories=Settings;HardwareSettings;",
         "StartupWMClass=asus-dashboard",
@@ -61,14 +66,19 @@ def set_autostart(enabled: bool, autostart_dir: Path = AUTOSTART_DIR) -> bool:
         return False
 
 
+def write_launcher(applications_dir: Path = APPLICATIONS_DIR) -> Path:
+    """Write the app menu entry and return its path"""
+    applications_dir.mkdir(parents=True, exist_ok=True)
+    path = applications_dir / ENTRY_NAME
+    path.write_text(build_entry(hidden=False))
+    return path
+
+
 def install(applications_dir: Path = APPLICATIONS_DIR, autostart_dir: Path = AUTOSTART_DIR) -> list[Path]:
     """Write the launcher and the autostart entry. Return the paths of the files written"""
-    written = []
-    for folder, hidden in ((applications_dir, False), (autostart_dir, True)):
-        folder.mkdir(parents=True, exist_ok=True)
-        path = folder / ENTRY_NAME
-        path.write_text(build_entry(hidden))
-        written.append(path)
+    written = [write_launcher(applications_dir)]
+    if set_autostart(True, autostart_dir):
+        written.append(autostart_dir / ENTRY_NAME)
     return written
 
 
@@ -83,7 +93,8 @@ def remove(applications_dir: Path = APPLICATIONS_DIR, autostart_dir: Path = AUTO
     return removed
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Install or remove the entries. This is what the asus-dashboard-install command runs"""
     if "--remove" in sys.argv:
         for removed_path in remove():
             print(f"Removed {removed_path}")
@@ -92,3 +103,7 @@ if __name__ == "__main__":
         for written_path in install():
             print(f"Wrote {written_path}")
         print("The dashboard is now in the app menu and will start in the tray at login.")
+
+
+if __name__ == "__main__":
+    main()

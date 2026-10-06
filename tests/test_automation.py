@@ -1,7 +1,7 @@
 import pytest
 
-import automation
-from presets import PRESETS
+from asus_dashboard import automation
+from asus_dashboard.presets import PRESETS
 
 
 @pytest.mark.parametrize("on_battery, expected", [

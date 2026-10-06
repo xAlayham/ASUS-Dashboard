@@ -1,6 +1,6 @@
 import json
 
-import settings
+from asus_dashboard import settings
 
 
 def test_load_settings_is_empty_before_anything_is_saved():

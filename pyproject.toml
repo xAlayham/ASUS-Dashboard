@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asus-dashboard"
+version = "0.1.0"
+description = "A control panel for ASUS laptops on Linux"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.5",
+]
+
+[project.scripts]
+asus-dashboard = "asus_dashboard.dashboard:main"
+asus-dashboard-apply = "asus_dashboard.apply:main"
+asus-dashboard-install = "asus_dashboard.install_desktop:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+asus_dashboard = ["style.qss", "assets/*.svg"]

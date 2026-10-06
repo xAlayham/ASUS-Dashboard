@@ -1,5 +1,5 @@
-from status import read_sysfs, write_sysfs, KEYBOARD
-from settings import get_setting, save_setting
+from asus_dashboard.status import read_sysfs, write_sysfs, KEYBOARD
+from asus_dashboard.settings import get_setting, save_setting
 
 RGB_EFFECTS = {
     "Static": 0,

@@ -1,7 +1,7 @@
 import pytest
 
-import keyboard
-import settings
+from asus_dashboard import keyboard
+from asus_dashboard import settings
 
 
 def test_set_keyboard_brightness_writes_and_saves(fake_keyboard):

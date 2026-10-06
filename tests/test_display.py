@@ -1,8 +1,8 @@
 import dbus
 import pytest
 
-import display
-import settings
+from asus_dashboard import display
+from asus_dashboard import settings
 
 
 def test_get_modes_turns_each_mode_into_a_simple_dict(fake_display):

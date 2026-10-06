@@ -1,7 +1,7 @@
 import pytest
 
-import apply
-import settings
+from asus_dashboard import apply
+from asus_dashboard import settings
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import subprocess
 from types import SimpleNamespace
 
-import status
+from asus_dashboard import status
 
 
 def finished(returncode: int, stdout: str = "", stderr: str = ""):

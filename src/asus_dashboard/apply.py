@@ -1,9 +1,9 @@
-from settings import load_settings
-from battery import set_charge_limit
-from keyboard import set_keyboard_brightness, apply_saved_keyboard_rgb
-from nightlight import set_night_light, set_night_light_temperature
-from performance import set_profile
-from display import set_refresh_rate
+from asus_dashboard.settings import load_settings
+from asus_dashboard.battery import set_charge_limit
+from asus_dashboard.keyboard import set_keyboard_brightness, apply_saved_keyboard_rgb
+from asus_dashboard.nightlight import set_night_light, set_night_light_temperature
+from asus_dashboard.performance import set_profile
+from asus_dashboard.display import set_refresh_rate
 
 APPLIERS = {
     "charge_limit": set_charge_limit,
@@ -42,5 +42,10 @@ def apply_all() -> None:
             
     print(f"Applied {applied} settings, {failed} failed")
 
-if __name__ == "__main__":
+def main() -> None:
+    """Re-apply the saved settings. This is what the asus-dashboard-apply command runs"""
     apply_all()
+
+
+if __name__ == "__main__":
+    main()

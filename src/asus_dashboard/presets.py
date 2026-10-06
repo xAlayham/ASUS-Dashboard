@@ -1,4 +1,4 @@
-from apply import APPLIERS
+from asus_dashboard.apply import APPLIERS
 
 PRESETS = {
     "Gaming": {"profile": "performance", "refresh_rate": 144, "keyboard_brightness": 3},

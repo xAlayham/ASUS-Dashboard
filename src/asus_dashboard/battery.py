@@ -1,5 +1,5 @@
-from status import read_sysfs, write_sysfs, BATTERY
-from settings import save_setting, load_settings
+from asus_dashboard.status import read_sysfs, write_sysfs, BATTERY
+from asus_dashboard.settings import save_setting, load_settings
 
 def set_charge_limit(limit: int) -> bool:
     """Sets battery charging limit to 20-100, rejects anything past this limit"""

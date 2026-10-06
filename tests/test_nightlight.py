@@ -1,8 +1,8 @@
 import pytest
 
-import nightlight
-import settings
-from nightlight import SCHEMA
+from asus_dashboard import nightlight
+from asus_dashboard import settings
+from asus_dashboard.nightlight import SCHEMA
 
 
 @pytest.mark.parametrize("output, expected", [

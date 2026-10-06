@@ -1,5 +1,5 @@
-from status import run_command
-from settings import save_setting
+from asus_dashboard.status import run_command
+from asus_dashboard.settings import save_setting
 
 SCHEMA = "org.gnome.settings-daemon.plugins.color"
 

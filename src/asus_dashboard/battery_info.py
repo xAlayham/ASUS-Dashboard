@@ -1,4 +1,4 @@
-from dbus_helpers import get_property
+from asus_dashboard.dbus_helpers import get_property
 
 UPOWER = "org.freedesktop.UPower"
 UPOWER_PATH = "/org/freedesktop/UPower"

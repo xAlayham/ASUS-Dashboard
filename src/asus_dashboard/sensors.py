@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from status import find_hwmon, read_sysfs, BATTERY
+from asus_dashboard.status import find_hwmon, read_sysfs, BATTERY
 
 PROC_STAT = Path("/proc/stat")
 

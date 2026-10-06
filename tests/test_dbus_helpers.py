@@ -1,7 +1,7 @@
 import dbus
 import pytest
 
-import dbus_helpers
+from asus_dashboard import dbus_helpers
 
 
 class FakeObject:

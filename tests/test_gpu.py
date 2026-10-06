@@ -1,6 +1,6 @@
 import pytest
 
-import gpu
+from asus_dashboard import gpu
 
 
 @pytest.fixture

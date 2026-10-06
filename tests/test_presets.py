@@ -1,8 +1,8 @@
 import pytest
 
-import presets
-from apply import APPLIERS
-from presets import PRESETS
+from asus_dashboard import presets
+from asus_dashboard.apply import APPLIERS
+from asus_dashboard.presets import PRESETS
 
 
 class Recorder:

@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-import status
+from asus_dashboard import status
 
 
 def test_read_sysfs_strips_the_trailing_newline(tmp_path):
