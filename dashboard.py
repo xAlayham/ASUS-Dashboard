@@ -5,9 +5,9 @@ from pathlib import Path
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
 from PySide6.QtCore import Qt, QSignalBlocker, QTimer
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox,
+    QApplication, QCheckBox, QColorDialog, QComboBox, QFormLayout, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QPushButton, QSlider, QStyle, QStyleOption, QVBoxLayout, QWidget,
 )
 
@@ -20,6 +20,7 @@ from display import get_screen_brightness, set_screen_brightness, MIN_SCREEN_BRI
 from nightlight import get_night_light, set_night_light
 from battery_info import get_battery_percentage, get_battery_state, is_on_battery, UPOWER, UPOWER_PATH, BATTERY_PATH
 from keyboard import get_keyboard_brightness, set_keyboard_brightness
+from keyboard import get_keyboard_rgb, set_keyboard_rgb, RGB_EFFECTS, RGB_SPEEDS, EFFECTS_WITH_COLOUR, EFFECTS_WITH_SPEED
 from battery import get_charge_limit_value, set_charge_limit
 from settings import get_setting, save_setting
 from themes import THEMES, DEFAULT_THEME
@@ -78,7 +79,7 @@ class Dashboard(QWidget):
         super().__init__()
 
         self.setWindowTitle("ASUS Dashboard")
-        self.resize(780, 750)
+        self.resize(780, 830)
         self.setObjectName("window")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -313,7 +314,7 @@ class Dashboard(QWidget):
         return group
 
     def build_keyboard_group(self) -> QGroupBox:
-        """Build the Keyboard section: brightness slider with its number"""
+        """Build the Keyboard section: brightness slider, lighting effect, colour and speed"""
         self.keyboard_slider = QSlider(Qt.Orientation.Horizontal)
         self.keyboard_slider.setRange(0, 3)
         self.keyboard_value = QLabel()
@@ -329,15 +330,54 @@ class Dashboard(QWidget):
         keyboard_row.addWidget(self.keyboard_slider)
         keyboard_row.addWidget(self.keyboard_value)
 
+        rgb = get_keyboard_rgb()
+        self.rgb_colour = rgb["colour"]
+
+        self.rgb_effect_box = QComboBox()
+        self.rgb_effect_box.addItems(list(RGB_EFFECTS))
+        self.rgb_effect_box.setCurrentText(rgb["effect"])
+
+        self.rgb_swatch = QLabel()
+        self.rgb_swatch.setFixedSize(34, 24)
+        self.rgb_colour_button = QPushButton("Choose...")
+        self.rgb_speed_box = QComboBox()
+        self.rgb_speed_box.setObjectName("speedBox")
+        self.rgb_speed_box.addItems(list(RGB_SPEEDS))
+        self.rgb_speed_box.setCurrentText(rgb["speed"])
+
+        colour_row = QHBoxLayout()
+        colour_row.addWidget(self.rgb_swatch)
+        colour_row.addWidget(self.rgb_colour_button)
+        colour_row.addStretch()
+
         form = QFormLayout()
         form.addRow("Brightness:", keyboard_row)
+        form.addRow("Effect:", self.rgb_effect_box)
+        form.addRow("Colour:", colour_row)
+        form.addRow("Speed:", self.rgb_speed_box)
 
         group = QGroupBox("Keyboard")
         group.setObjectName("keyboard")
         group.setLayout(form)
 
+        self.update_rgb_controls()
+
         self.keyboard_slider.valueChanged.connect(self.on_keyboard_changed)
+        self.rgb_effect_box.currentTextChanged.connect(self.on_rgb_changed)
+        self.rgb_speed_box.currentTextChanged.connect(self.on_rgb_changed)
+        self.rgb_colour_button.clicked.connect(self.on_rgb_colour_clicked)
         return group
+
+    def update_rgb_controls(self) -> None:
+        """Show the chosen colour in the swatch, and grey out colour or speed when the effect ignores them"""
+        effect = self.rgb_effect_box.currentText()
+        uses_colour = effect in EFFECTS_WITH_COLOUR
+        self.rgb_swatch.setStyleSheet(
+            f"background: {self.rgb_colour if uses_colour else 'transparent'};"
+            "border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 6px;"
+        )
+        self.rgb_colour_button.setEnabled(uses_colour)
+        self.rgb_speed_box.setEnabled(effect in EFFECTS_WITH_SPEED)
 
     def build_battery_group(self) -> QGroupBox:
         """Build the Battery section: level label and charge limit slider with its number"""
@@ -629,6 +669,26 @@ class Dashboard(QWidget):
         ok = set_night_light(checked)
         state = "on" if checked else "off"
         self.show_result(ok, f"Night light turned {state}" if ok else f"Could not turn night light {state}")
+
+    def on_rgb_colour_clicked(self) -> None:
+        """Open the colour picker. Apply the colour if the user chose one, do nothing if they cancelled"""
+        chosen = QColorDialog.getColor(QColor(self.rgb_colour), self, "Keyboard colour")
+        if not chosen.isValid():
+            return
+        self.rgb_colour = chosen.name()
+        self.on_rgb_changed()
+
+    def on_rgb_changed(self, text: str = "") -> None:
+        """Runs when the effect, colour or speed changes: send all three to the keyboard"""
+        effect = self.rgb_effect_box.currentText()
+        ok = set_keyboard_rgb(effect, self.rgb_colour, self.rgb_speed_box.currentText())
+        self.update_rgb_controls()
+        if not ok:
+            self.show_result(False, "Could not set keyboard lighting")
+        elif self.keyboard_slider.value() == 0:
+            self.show_result(True, f"Keyboard lighting set to {effect}. Raise Brightness to see it")
+        else:
+            self.show_result(True, f"Keyboard lighting set to {effect}")
 
     def on_keyboard_changed(self, value: int) -> None:
         self.keyboard_value.setText(str(value))

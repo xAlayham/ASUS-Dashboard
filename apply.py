@@ -1,6 +1,6 @@
 from settings import load_settings
 from battery import set_charge_limit
-from keyboard import set_keyboard_brightness
+from keyboard import set_keyboard_brightness, apply_saved_keyboard_rgb
 from nightlight import set_night_light, set_night_light_temperature
 from performance import set_profile
 from display import set_refresh_rate
@@ -8,6 +8,7 @@ from display import set_refresh_rate
 APPLIERS = {
     "charge_limit": set_charge_limit,
     "keyboard_brightness": set_keyboard_brightness,
+    "keyboard_rgb": apply_saved_keyboard_rgb,
     "night_light": set_night_light,
     "night_light_temperature": set_night_light_temperature,
     "profile": set_profile,
