@@ -21,6 +21,7 @@ from keyboard import get_keyboard_brightness, set_keyboard_brightness
 from battery import get_charge_limit_value, set_charge_limit
 from settings import get_setting, save_setting
 from themes import THEMES, DEFAULT_THEME
+from worker import Worker
 
 
 REFRESH_INTERVAL_MS = 2000
@@ -61,17 +62,16 @@ class Dashboard(QWidget):
 
         self.setWindowTitle("ASUS Dashboard")
         self.resize(780, 470)
-        # Object names let style.qss target these widgets; the attribute makes the window background styleable
         self.setObjectName("window")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        # Lets the desktop show through wherever style.qss uses a see-through background colour
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         title = QLabel("ASUS TUF Dashboard")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setObjectName("title")
 
-        # Created before the sections, because their slots write to it
+        self.gpu_worker = None
+
         self.status_label = QLabel("Ready")
         self.status_label.setObjectName("status")
         close_button = QPushButton("Close")
@@ -96,7 +96,6 @@ class Dashboard(QWidget):
         layout.addLayout(grid)
         layout.addStretch()
 
-        # Bottom row: status on the left, theme chooser and Close on the right
         bottom_row = QHBoxLayout()
         bottom_row.addWidget(self.status_label)
         bottom_row.addStretch()
@@ -110,6 +109,14 @@ class Dashboard(QWidget):
         self.theme_box.currentTextChanged.connect(self.on_theme_changed)
 
         self.start_sync()
+
+    def closeEvent(self, event) -> None:
+        """Qt calls this when the window is asked to close. Refuse while the GPU job is still running"""
+        if self.gpu_worker is not None and self.gpu_worker.isRunning():
+            self.show_result(False, "Finish or cancel the password window before closing")
+            event.ignore()
+            return
+        event.accept()
 
     def paintEvent(self, event) -> None:
         """Draw the window background from style.qss. Qt skips this by itself for a see-through window"""
@@ -148,7 +155,6 @@ class Dashboard(QWidget):
         group.setObjectName("performance")
         group.setLayout(form)
 
-        # The GPU dropdown has no connection: it only chooses, the button applies
         self.profile_box.currentTextChanged.connect(self.on_profile_changed)
         self.gpu_button.clicked.connect(self.on_gpu_apply_clicked)
         return group
@@ -294,7 +300,6 @@ class Dashboard(QWidget):
             del blocker
             self.keyboard_value.setText(str(brightness))
 
-        # Skip the charge slider while the user is dragging it, so it isn't pulled back
         limit = get_charge_limit_value()
         if limit is not None and not self.charge_slider.isSliderDown() and limit != self.charge_slider.value():
             blocker = QSignalBlocker(self.charge_slider)
@@ -329,9 +334,21 @@ class Dashboard(QWidget):
         self.show_result(ok, f"Profile set to {text}" if ok else f"Could not set profile to {text}")
 
     def on_gpu_apply_clicked(self) -> None:
-        """Runs when Apply is clicked. Blocks the window while the password dialog is open"""
+        """Runs when Apply is clicked. Starts the slow job in a background thread and returns at once"""
         mode = self.gpu_box.currentText()
-        ok = set_gpu_mode(mode)
+        self.gpu_box.setEnabled(False)
+        self.gpu_button.setEnabled(False)
+        self.status_label.setText("Waiting for password...")
+
+        self.gpu_worker = Worker(set_gpu_mode, mode)
+        self.gpu_worker.done.connect(self.on_gpu_apply_done)
+        self.gpu_worker.start()
+
+    def on_gpu_apply_done(self, ok: bool) -> None:
+        """Runs in the main thread when the GPU job has finished"""
+        mode = self.gpu_box.currentText()
+        self.gpu_box.setEnabled(True)
+        self.gpu_button.setEnabled(True)
         self.show_result(ok, f"GPU mode set to {mode}. Reboot to apply" if ok else f"Could not set GPU mode to {mode}")
 
     def on_refresh_rate_changed(self, text: str) -> None:
@@ -360,7 +377,6 @@ class Dashboard(QWidget):
 
 
 if __name__ == "__main__":
-    # Must run before QApplication and before any D-Bus connection, or signals never arrive
     DBusGMainLoop(set_as_default=True)
     app = QApplication(sys.argv)
     app.setStyleSheet(build_style(get_theme_name()))

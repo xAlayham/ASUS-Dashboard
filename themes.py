@@ -10,7 +10,6 @@ window is (0 = fully see-through, 1 = solid).
 DEFAULT_THEME = "Mocha"
 
 THEMES = {
-    # Soft purple-blue with pastel accents
     "Mocha": {
         "WINDOW_TOP": "rgba(30, 30, 46, 0.84)",
         "WINDOW_BOTTOM": "rgba(24, 24, 37, 0.90)",
@@ -27,7 +26,6 @@ THEMES = {
         "SECTION_3": "#a6e3a1",
         "SECTION_4": "#89b4fa",
     },
-    # Dark graphite with warm amber
     "Amber": {
         "WINDOW_TOP": "rgba(52, 40, 30, 0.84)",
         "WINDOW_BOTTOM": "rgba(23, 23, 26, 0.90)",
@@ -44,7 +42,6 @@ THEMES = {
         "SECTION_3": "#f2c94c",
         "SECTION_4": "#e0a070",
     },
-    # Dark slate with mint
     "Teal": {
         "WINDOW_TOP": "rgba(18, 56, 58, 0.84)",
         "WINDOW_BOTTOM": "rgba(14, 28, 34, 0.90)",
@@ -61,7 +58,6 @@ THEMES = {
         "SECTION_3": "#9be28a",
         "SECTION_4": "#7fb7ff",
     },
-    # Deep navy with soft blue
     "Midnight": {
         "WINDOW_TOP": "rgba(38, 32, 74, 0.84)",
         "WINDOW_BOTTOM": "rgba(18, 22, 40, 0.90)",

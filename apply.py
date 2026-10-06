@@ -14,7 +14,6 @@ APPLIERS = {
     "refresh_rate": set_refresh_rate,
 }
 
-# Saved settings that only the dashboard window uses; there is nothing to apply to the hardware
 UI_ONLY = {"theme"}
 
 def apply_all() -> None:
