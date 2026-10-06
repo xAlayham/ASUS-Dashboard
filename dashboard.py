@@ -24,11 +24,14 @@ from themes import THEMES, DEFAULT_THEME
 from worker import Worker
 from sensors import get_cpu_temperature, get_fan_speeds, get_power_draw, CpuUsage
 from sparkline import Sparkline
+from presets import PRESETS, apply_preset, describe_preset, find_matching_preset
 
 
 REFRESH_INTERVAL_MS = 2000
 SENSOR_INTERVAL_MS = 1000
 PROJECT_DIR = Path(__file__).parent
+CUSTOM = "Custom"
+CUSTOM_HINT = "your own mix of settings"
 
 
 def get_theme_name() -> str:
@@ -64,7 +67,7 @@ class Dashboard(QWidget):
         super().__init__()
 
         self.setWindowTitle("ASUS Dashboard")
-        self.resize(780, 660)
+        self.resize(780, 710)
         self.setObjectName("window")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -97,6 +100,8 @@ class Dashboard(QWidget):
         layout.setContentsMargins(22, 18, 22, 18)
         layout.setSpacing(10)
         layout.addWidget(title)
+
+        layout.addLayout(self.build_preset_row())
         layout.addLayout(grid)
         layout.addStretch()
 
@@ -129,6 +134,49 @@ class Dashboard(QWidget):
         painter = QPainter(self)
         self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, option, painter, self)
 
+    def build_preset_row(self) -> QHBoxLayout:
+        """Build the Profile row: a dropdown of presets and a line saying what the chosen one sets"""
+        preset_label = QLabel("Profile:")
+        preset_label.setObjectName("presetLabel")
+
+        self.preset_box = QComboBox()
+        self.preset_box.setObjectName("presetBox")
+        self.preset_box.addItem(CUSTOM)
+        self.preset_box.setItemData(0, CUSTOM_HINT, Qt.ItemDataRole.ToolTipRole)
+        for name in PRESETS:
+            self.preset_box.addItem(name)
+            self.preset_box.setItemData(self.preset_box.count() - 1, describe_preset(name), Qt.ItemDataRole.ToolTipRole)
+
+        self.preset_hint = QLabel()
+        self.preset_hint.setObjectName("presetHint")
+        self.show_preset(find_matching_preset(self.current_state()))
+
+        row = QHBoxLayout()
+        row.addWidget(preset_label)
+        row.addWidget(self.preset_box)
+        row.addWidget(self.preset_hint)
+        row.addStretch()
+
+        self.preset_box.currentTextChanged.connect(self.on_preset_chosen)
+        return row
+
+    def current_state(self) -> dict:
+        """Return the current value of every setting a preset can change"""
+        return {
+            "profile": get_profile(),
+            "refresh_rate": get_current_refresh_rate(),
+            "keyboard_brightness": get_keyboard_brightness(),
+        }
+
+    def show_preset(self, name: str | None) -> None:
+        """Make the Profile dropdown and its hint show the given preset, or Custom for None, without applying it"""
+        text = CUSTOM if name is None else name
+        if text != self.preset_box.currentText():
+            blocker = QSignalBlocker(self.preset_box)
+            self.preset_box.setCurrentText(text)
+            del blocker
+        self.preset_hint.setText(CUSTOM_HINT if name is None else describe_preset(name))
+
     def build_performance_group(self) -> QGroupBox:
         """Build the Performance section: profile dropdown, GPU mode dropdown and its Apply button"""
         self.profile_box = QComboBox()
@@ -151,7 +199,7 @@ class Dashboard(QWidget):
             self.gpu_box.setCurrentText(gpu_mode)
 
         form = QFormLayout()
-        form.addRow("Profile:", self.profile_box)
+        form.addRow("Power mode:", self.profile_box)
         form.addRow("GPU mode:", self.gpu_box)
         form.addRow("", self.gpu_button)
 
@@ -367,7 +415,17 @@ class Dashboard(QWidget):
             self.battery_label.setText(self.battery_text())
 
     def refresh_from_system(self) -> None:
-        """Runs on the timer: re-read what has no change signal and update the widgets quietly"""
+        """Runs on the timer: re-read the settings and update the widgets quietly.
+
+        The profile is checked here too, although it also has a D-Bus signal: when this app itself
+        changes the profile, that signal can arrive late, so this keeps the dropdown right.
+        """
+        profile = get_profile()
+        if profile is not None and profile != self.profile_box.currentText():
+            blocker = QSignalBlocker(self.profile_box)
+            self.profile_box.setCurrentText(profile)
+            del blocker
+
         brightness = get_keyboard_brightness()
         if brightness is not None and brightness != self.keyboard_slider.value():
             blocker = QSignalBlocker(self.keyboard_slider)
@@ -394,9 +452,24 @@ class Dashboard(QWidget):
             self.night_light_box.setChecked(night_light)
             del blocker
 
+        state = {"profile": profile, "refresh_rate": rate, "keyboard_brightness": brightness}
+        self.show_preset(find_matching_preset(state))
+
     def show_result(self, ok: bool, message: str) -> None:
         """Show the outcome of the last action in the status line"""
         self.status_label.setText(f"{'✓' if ok else '✗'} {message}")
+
+    def on_preset_chosen(self, name: str) -> None:
+        """Runs when the user picks a profile. Applies it, then makes the controls show the new state"""
+        if name == CUSTOM:
+            self.refresh_from_system()
+            return
+        applied, failed = apply_preset(name)
+        self.refresh_from_system()
+        if failed == 0:
+            self.show_result(True, f"{name} profile applied")
+        else:
+            self.show_result(False, f"{name} profile: {applied} applied, {failed} failed")
 
     def on_theme_changed(self, name: str) -> None:
         """Re-colour the whole app with the chosen theme and remember the choice"""
@@ -408,7 +481,8 @@ class Dashboard(QWidget):
 
     def on_profile_changed(self, text: str) -> None:
         ok = set_profile(text)
-        self.show_result(ok, f"Profile set to {text}" if ok else f"Could not set profile to {text}")
+        self.show_result(ok, f"Power mode set to {text}" if ok else f"Could not set power mode to {text}")
+        self.show_preset(find_matching_preset(self.current_state()))
 
     def on_gpu_apply_clicked(self) -> None:
         """Runs when Apply is clicked. Starts the slow job in a background thread and returns at once"""
@@ -432,6 +506,7 @@ class Dashboard(QWidget):
         rate = int(text.split()[0])
         ok = set_refresh_rate(rate)
         self.show_result(ok, f"Refresh rate set to {rate} Hz" if ok else f"Could not set refresh rate to {rate} Hz")
+        self.show_preset(find_matching_preset(self.current_state()))
 
     def on_night_light_toggled(self, checked: bool) -> None:
         ok = set_night_light(checked)
@@ -442,6 +517,7 @@ class Dashboard(QWidget):
         self.keyboard_value.setText(str(value))
         ok = set_keyboard_brightness(value)
         self.show_result(ok, f"Keyboard set to {value}" if ok else "Could not set keyboard brightness")
+        self.show_preset(find_matching_preset(self.current_state()))
 
     def on_charge_dragged(self, value: int) -> None:
         """Only updates the number while dragging; nothing is applied yet"""
