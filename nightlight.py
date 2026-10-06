@@ -18,9 +18,26 @@ def get_night_light_temperature() -> int | None:
     return int(output.split()[-1])
 
 def set_night_light(enabled: bool) -> bool:
-    """Turn night light on or off"""
-    value = "true" if enabled else "false"
-    ok = run_command(["gsettings", "set", SCHEMA, "night-light-enabled", value]) is not None
+    """Turn the warm screen tint on right now, or off.
+
+    GNOME only tints the screen inside its schedule, which by default is sunset to sunrise, so
+    switching night light on during the day shows nothing. Turning it on here therefore also
+    sets an all-day schedule. Turning it off hands the schedule back to sunset-to-sunrise.
+    """
+    if enabled:
+        commands = [
+            ["gsettings", "set", SCHEMA, "night-light-schedule-automatic", "false"],
+            ["gsettings", "set", SCHEMA, "night-light-schedule-from", "0.0"],
+            ["gsettings", "set", SCHEMA, "night-light-schedule-to", "23.99"],
+            ["gsettings", "set", SCHEMA, "night-light-enabled", "true"],
+        ]
+    else:
+        commands = [
+            ["gsettings", "set", SCHEMA, "night-light-enabled", "false"],
+            ["gsettings", "set", SCHEMA, "night-light-schedule-automatic", "true"],
+        ]
+
+    ok = all(run_command(command) is not None for command in commands)
     if ok:
         save_setting("night_light", enabled)
     return ok

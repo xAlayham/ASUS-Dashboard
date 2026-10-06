@@ -1,10 +1,16 @@
 from settings import save_setting
+from dbus_helpers import get_property, set_property
 import dbus
 
 MUTTER = "org.gnome.Mutter.DisplayConfig"
 MUTTER_PATH = "/org/gnome/Mutter/DisplayConfig"
 CONNECTOR = "eDP-1"
 TEMPORARY = 1
+
+POWER = "org.gnome.SettingsDaemon.Power"
+POWER_PATH = "/org/gnome/SettingsDaemon/Power"
+SCREEN = "org.gnome.SettingsDaemon.Power.Screen"
+MIN_SCREEN_BRIGHTNESS = 5
 
 def get_display_config():
     """Return a proxy for GNOME`s display service, or None if it isn't running"""
@@ -120,6 +126,22 @@ def set_refresh_rate(rate: int) -> bool:
 
     save_setting("refresh_rate", rate)
     return True
+
+def get_screen_brightness() -> int | None:
+    """Return the laptop screen brightness as a percentage (0-100), or None if unsupported"""
+    value = get_property(POWER, POWER_PATH, SCREEN, "Brightness", session=True)
+    if value is None or int(value) < 0:
+        return None
+    return int(value)
+
+
+def set_screen_brightness(percent: int) -> bool:
+    """Set the laptop screen brightness. Refuses values that would make the screen too dark to see"""
+    if not MIN_SCREEN_BRIGHTNESS <= percent <= 100:
+        print(f"Screen brightness must be between {MIN_SCREEN_BRIGHTNESS} and 100")
+        return False
+    return set_property(POWER, POWER_PATH, SCREEN, "Brightness", percent, session=True)
+
 
 if __name__ == "__main__":
     print("Current mode:", get_current_mode())

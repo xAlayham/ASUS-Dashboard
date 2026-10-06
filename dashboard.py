@@ -1,4 +1,5 @@
 import sys
+from functools import partial
 from pathlib import Path
 
 import dbus
@@ -15,8 +16,9 @@ from performance import get_profile, get_profile_choices, set_profile
 from performance import BUS_NAME as PROFILES, OBJECT_PATH as PROFILES_PATH
 from gpu import get_gpu_mode, set_gpu_mode, is_nvidia_awake, PRIME_NAMES
 from display import get_current_refresh_rate, get_refresh_rates, set_refresh_rate
+from display import get_screen_brightness, set_screen_brightness, MIN_SCREEN_BRIGHTNESS
 from nightlight import get_night_light, set_night_light
-from battery_info import get_battery_percentage, get_battery_state, UPOWER, BATTERY_PATH
+from battery_info import get_battery_percentage, get_battery_state, is_on_battery, UPOWER, UPOWER_PATH, BATTERY_PATH
 from keyboard import get_keyboard_brightness, set_keyboard_brightness
 from battery import get_charge_limit_value, set_charge_limit
 from settings import get_setting, save_setting
@@ -25,6 +27,7 @@ from worker import Worker
 from sensors import get_cpu_temperature, get_fan_speeds, get_power_draw, CpuUsage
 from sparkline import Sparkline
 from presets import PRESETS, apply_preset, describe_preset, find_matching_preset
+from automation import choose_preset, DEFAULT_CHARGER_PRESET, DEFAULT_BATTERY_PRESET
 
 
 REFRESH_INTERVAL_MS = 2000
@@ -39,6 +42,14 @@ def get_theme_name() -> str:
     name = get_setting("theme", DEFAULT_THEME)
     if name not in THEMES:
         return DEFAULT_THEME
+    return name
+
+
+def get_saved_preset(key: str, default: str) -> str:
+    """Return the preset name saved under a settings key, or the default if nothing valid is saved"""
+    name = get_setting(key, default)
+    if name not in PRESETS:
+        return default
     return name
 
 
@@ -67,7 +78,7 @@ class Dashboard(QWidget):
         super().__init__()
 
         self.setWindowTitle("ASUS Dashboard")
-        self.resize(780, 710)
+        self.resize(780, 750)
         self.setObjectName("window")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -77,6 +88,7 @@ class Dashboard(QWidget):
         title.setObjectName("title")
 
         self.gpu_worker = None
+        self.on_battery = is_on_battery()
 
         self.status_label = QLabel("Ready")
         self.status_label.setObjectName("status")
@@ -102,6 +114,7 @@ class Dashboard(QWidget):
         layout.addWidget(title)
 
         layout.addLayout(self.build_preset_row())
+        layout.addLayout(self.build_automation_row())
         layout.addLayout(grid)
         layout.addStretch()
 
@@ -160,6 +173,46 @@ class Dashboard(QWidget):
         self.preset_box.currentTextChanged.connect(self.on_preset_chosen)
         return row
 
+    def build_automation_row(self) -> QHBoxLayout:
+        """Build the automation row: a tick box and the profile to use on the charger and on battery"""
+        self.auto_box = QCheckBox("Switch automatically")
+        self.auto_box.setObjectName("autoCheck")
+        enabled = bool(get_setting("auto_switch", False))
+        self.auto_box.setChecked(enabled)
+
+        charger_label = QLabel("On charger:")
+        charger_label.setObjectName("autoLabel")
+        self.charger_box = QComboBox()
+        self.charger_box.setObjectName("autoBox")
+        self.charger_box.addItems(list(PRESETS))
+        self.charger_box.setCurrentText(get_saved_preset("charger_preset", DEFAULT_CHARGER_PRESET))
+        self.charger_box.setEnabled(enabled)
+
+        battery_label = QLabel("On battery:")
+        battery_label.setObjectName("autoLabel")
+        self.battery_box = QComboBox()
+        self.battery_box.setObjectName("autoBox")
+        self.battery_box.addItems(list(PRESETS))
+        self.battery_box.setCurrentText(get_saved_preset("battery_preset", DEFAULT_BATTERY_PRESET))
+        self.battery_box.setEnabled(enabled)
+
+        row = QHBoxLayout()
+        row.addWidget(self.auto_box)
+        row.addSpacing(12)
+        row.addWidget(charger_label)
+        row.addWidget(self.charger_box)
+        row.addSpacing(12)
+        row.addWidget(battery_label)
+        row.addWidget(self.battery_box)
+        row.addStretch()
+
+        self.auto_box.toggled.connect(self.charger_box.setEnabled)
+        self.auto_box.toggled.connect(self.battery_box.setEnabled)
+        self.auto_box.toggled.connect(partial(save_setting, "auto_switch"))
+        self.charger_box.currentTextChanged.connect(partial(save_setting, "charger_preset"))
+        self.battery_box.currentTextChanged.connect(partial(save_setting, "battery_preset"))
+        return row
+
     def current_state(self) -> dict:
         """Return the current value of every setting a preset can change"""
         return {
@@ -212,7 +265,22 @@ class Dashboard(QWidget):
         return group
 
     def build_display_group(self) -> QGroupBox:
-        """Build the Display section: refresh rate dropdown and night light tick box"""
+        """Build the Display section: brightness slider, refresh rate dropdown and night light tick box"""
+        self.screen_slider = QSlider(Qt.Orientation.Horizontal)
+        self.screen_slider.setRange(MIN_SCREEN_BRIGHTNESS, 100)
+        self.screen_value = QLabel()
+        screen_brightness = get_screen_brightness()
+        if screen_brightness is None:
+            self.screen_slider.setEnabled(False)
+            self.screen_value.setText("not supported")
+        else:
+            self.screen_slider.setValue(screen_brightness)
+            self.screen_value.setText(f"{screen_brightness}%")
+
+        screen_row = QHBoxLayout()
+        screen_row.addWidget(self.screen_slider)
+        screen_row.addWidget(self.screen_value)
+
         self.refresh_box = QComboBox()
         rates = get_refresh_rates()
         current_rate = get_current_refresh_rate()
@@ -230,6 +298,7 @@ class Dashboard(QWidget):
             self.night_light_box.setChecked(night_light)
 
         form = QFormLayout()
+        form.addRow("Brightness:", screen_row)
         form.addRow("Refresh rate:", self.refresh_box)
         form.addRow("", self.night_light_box)
 
@@ -237,6 +306,8 @@ class Dashboard(QWidget):
         group.setObjectName("display")
         group.setLayout(form)
 
+        self.screen_slider.valueChanged.connect(self.on_screen_brightness_changed)
+        self.screen_slider.sliderReleased.connect(self.on_screen_brightness_released)
         self.refresh_box.currentTextChanged.connect(self.on_refresh_rate_changed)
         self.night_light_box.toggled.connect(self.on_night_light_toggled)
         return group
@@ -391,6 +462,13 @@ class Dashboard(QWidget):
             bus_name=UPOWER,
             path=BATTERY_PATH,
         )
+        bus.add_signal_receiver(
+            self.on_upower_properties_changed,
+            signal_name="PropertiesChanged",
+            dbus_interface=PROPERTIES,
+            bus_name=UPOWER,
+            path=UPOWER_PATH,
+        )
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh_from_system)
@@ -408,6 +486,29 @@ class Dashboard(QWidget):
         blocker = QSignalBlocker(self.profile_box)
         self.profile_box.setCurrentText(str(changed["ActiveProfile"]))
         del blocker
+
+    def on_upower_properties_changed(self, interface, changed, invalidated) -> None:
+        """The system says something about the power supply changed: pass on whether we are on battery"""
+        if "OnBattery" in changed:
+            self.on_power_source_changed(bool(changed["OnBattery"]))
+
+    def on_power_source_changed(self, on_battery: bool) -> None:
+        """Runs when the charger is plugged in or unplugged. Acts only if the power source really changed"""
+        if on_battery == self.on_battery:
+            return
+        self.on_battery = on_battery
+
+        name = choose_preset(on_battery, self.auto_box.isChecked(), self.charger_box.currentText(), self.battery_box.currentText())
+        if name is None:
+            return
+
+        applied, failed = apply_preset(name)
+        self.refresh_from_system()
+        source = "On battery" if on_battery else "On charger"
+        if failed == 0:
+            self.show_result(True, f"{source}: switched to {name}")
+        else:
+            self.show_result(False, f"{source}: {name} profile, {applied} applied, {failed} failed")
 
     def on_battery_properties_changed(self, interface, changed, invalidated) -> None:
         """The system says the battery level or state changed: refresh the level text"""
@@ -439,6 +540,13 @@ class Dashboard(QWidget):
             self.charge_slider.setValue(limit)
             del blocker
             self.charge_value.setText(f"{limit}%")
+
+        screen_brightness = get_screen_brightness()
+        if screen_brightness is not None and not self.screen_slider.isSliderDown() and screen_brightness != self.screen_slider.value():
+            blocker = QSignalBlocker(self.screen_slider)
+            self.screen_slider.setValue(screen_brightness)
+            del blocker
+            self.screen_value.setText(f"{screen_brightness}%")
 
         rate = get_current_refresh_rate()
         if rate is not None and f"{rate} Hz" != self.refresh_box.currentText():
@@ -507,6 +615,15 @@ class Dashboard(QWidget):
         ok = set_refresh_rate(rate)
         self.show_result(ok, f"Refresh rate set to {rate} Hz" if ok else f"Could not set refresh rate to {rate} Hz")
         self.show_preset(find_matching_preset(self.current_state()))
+
+    def on_screen_brightness_changed(self, value: int) -> None:
+        """Runs while the slider moves: the screen follows it live"""
+        self.screen_value.setText(f"{value}%")
+        if not set_screen_brightness(value):
+            self.show_result(False, "Could not set screen brightness")
+
+    def on_screen_brightness_released(self) -> None:
+        self.show_result(True, f"Screen brightness set to {self.screen_slider.value()}%")
 
     def on_night_light_toggled(self, checked: bool) -> None:
         ok = set_night_light(checked)

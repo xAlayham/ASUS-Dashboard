@@ -14,7 +14,8 @@ APPLIERS = {
     "refresh_rate": set_refresh_rate,
 }
 
-UI_ONLY = {"theme"}
+UI_ONLY = {"theme", "auto_switch", "charger_preset", "battery_preset"}
+KEPT_BY_GNOME = {"night_light", "night_light_temperature"}
 
 def apply_all() -> None:
     """Apply every saved setting to the hardware and print a summary"""
@@ -26,7 +27,7 @@ def apply_all() -> None:
     applied = 0
     failed = 0
     for key, value in settings.items():
-        if key in UI_ONLY:
+        if key in UI_ONLY or key in KEPT_BY_GNOME:
             continue
         applier = APPLIERS.get(key)
         if applier is None:
