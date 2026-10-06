@@ -1,0 +1,17 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-dbus python3-pytest
+
+      - name: Run the tests
+        run: python3 -m pytest -v

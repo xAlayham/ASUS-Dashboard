@@ -4,8 +4,12 @@ import dbus
 import pytest
 
 import battery
+import battery_info
+import display
 import gpu
 import keyboard
+import nightlight
+import performance
 import sensors
 import settings
 import status
@@ -93,3 +97,101 @@ def fake_hwmon(tmp_path, monkeypatch):
             (folder / folder_name / file_name).write_text(content + "\n")
     monkeypatch.setattr(status, "HWMON", folder)
     return folder
+
+
+class FakeCommand:
+    """Stands in for run_command: remembers every command and returns what the test chose"""
+
+    def __init__(self):
+        self.output = ""
+        self.failing_word = None
+        self.calls = []
+        self.timeouts = []
+
+    def __call__(self, args, timeout=5):
+        self.calls.append(args)
+        self.timeouts.append(timeout)
+        if self.failing_word is not None and self.failing_word in args:
+            return None
+        return self.output
+
+
+class FakeProperties:
+    """Stands in for the D-Bus helpers: answers from a dict and remembers every write"""
+
+    def __init__(self):
+        self.values = {}
+        self.set_result = True
+        self.get_calls = []
+        self.set_calls = []
+
+    def get(self, bus_name, path, interface, name, session=False):
+        self.get_calls.append((name, session))
+        return self.values.get(name)
+
+    def set(self, bus_name, path, interface, name, value, session=False):
+        self.set_calls.append((name, value, session))
+        return self.set_result
+
+
+class FakeDisplayConfig:
+    """Stands in for GNOME's display service: one screen setup to read, and a record of what was applied"""
+
+    def __init__(self):
+        self.serial = 7
+        self.monitors = []
+        self.logical_monitors = [(0, 0, 1.0, 0, True, [], {})]
+        self.read_error = None
+        self.apply_error = None
+        self.applied = []
+
+    def add_monitor(self, connector, modes):
+        """Add a screen. Each mode is (id, width, height, rate, is_current)"""
+        converted = []
+        for mode_id, width, height, rate, is_current in modes:
+            flags = {"is-current": True} if is_current else {}
+            converted.append((mode_id, width, height, rate, 1.0, [1.0, 2.0], flags))
+        self.monitors.append(((connector, "CMN", "0x1521", "0x0"), converted, {}))
+
+    def GetCurrentState(self):
+        if self.read_error is not None:
+            raise self.read_error
+        return self.serial, self.monitors, self.logical_monitors, {}
+
+    def ApplyMonitorsConfig(self, serial, method, logical_monitors, properties):
+        if self.apply_error is not None:
+            raise self.apply_error
+        self.applied.append((serial, method, logical_monitors, properties))
+
+
+@pytest.fixture
+def fake_command(monkeypatch):
+    """Replace run_command in every module that uses it, so no real program is started"""
+    fake = FakeCommand()
+    for module in (nightlight, gpu):
+        monkeypatch.setattr(module, "run_command", fake)
+    return fake
+
+
+@pytest.fixture
+def fake_properties(monkeypatch):
+    """Replace the D-Bus property helpers in every module that uses them"""
+    fake = FakeProperties()
+    for module in (performance, battery_info, gpu, display):
+        monkeypatch.setattr(module, "get_property", fake.get)
+    for module in (performance, display):
+        monkeypatch.setattr(module, "set_property", fake.set)
+    return fake
+
+
+@pytest.fixture
+def fake_display(monkeypatch):
+    """A pretend laptop screen at 1920x1080: 144 Hz now, 60 Hz available, plus a smaller 144 Hz mode"""
+    fake = FakeDisplayConfig()
+    fake.add_monitor("eDP-1", [
+        ("1920x1080@144.003", 1920, 1080, 144.003, True),
+        ("1920x1080@60.004", 1920, 1080, 60.004, False),
+        ("1680x1050@144.003", 1680, 1050, 144.003, False),
+    ])
+    monkeypatch.setattr(display, "get_display_config", lambda: fake)
+    return fake
